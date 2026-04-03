@@ -2,9 +2,14 @@ import kis_auth as api
 import telegram
 from config import ACCOUNT_NO, IS_PAPER, POSITION_SIZE_PCT
 
+def _acc_parts():
+    parts = ACCOUNT_NO.split("-")
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return parts[0], "01"
+
 def get_overseas_balance() -> dict:
-    """해외주식 잔고 + 가용 달러 조회"""
-    acc_no, acc_prod = ACCOUNT_NO.split("-")
+    acc_no, acc_prod = _acc_parts()
     tr_id = "VTTS3012R" if IS_PAPER else "TTTS3012R"
     try:
         data = api.get(
@@ -14,7 +19,7 @@ def get_overseas_balance() -> dict:
                 "CANO": acc_no,
                 "ACNT_PRDT_CD": acc_prod,
                 "WCRC_FRCR_DVSN_CD": "02",
-                "NATN_CD": "840",       # 미국 = 840
+                "NATN_CD": "840",
                 "TR_MKET_CD": "00",
                 "INQR_DVSN_CD": "00",
             }
@@ -30,7 +35,6 @@ def get_overseas_balance() -> dict:
     return {"total_eval_usd": 0, "available_usd": 0}
 
 def calc_overseas_qty(price_usd: float) -> int:
-    """매수 수량 계산 (총 자산의 POSITION_SIZE_PCT)"""
     balance = get_overseas_balance()
     total = balance["total_eval_usd"]
     available = balance["available_usd"]
@@ -40,11 +44,9 @@ def calc_overseas_qty(price_usd: float) -> int:
     return max(qty, 0)
 
 def buy_overseas(ticker: str, name: str, exchange: str, reason: str = "모멘텀 진입") -> dict | None:
-    """해외주식 시장가 매수"""
-    acc_no, acc_prod = ACCOUNT_NO.split("-")
+    acc_no, acc_prod = _acc_parts()
     tr_id = "VTTT1002U" if IS_PAPER else "TTTT1002U"
 
-    # 현재가 조회
     price_data = api.get(
         "/uapi/overseas-price/v1/quotations/price",
         "HHDFS00000300",
@@ -66,7 +68,7 @@ def buy_overseas(ticker: str, name: str, exchange: str, reason: str = "모멘텀
         "OVRS_EXCG_CD": exchange,
         "PDNO": ticker,
         "ORD_QTY": str(qty),
-        "OVRS_ORD_UNPR": "0",    # 시장가
+        "OVRS_ORD_UNPR": "0",
         "ORD_SVR_DVSN_CD": "0",
         "ORD_DVSN": "00",
     }
@@ -91,11 +93,9 @@ def buy_overseas(ticker: str, name: str, exchange: str, reason: str = "모멘텀
         return None
 
 def sell_overseas(ticker: str, name: str, exchange: str, qty: int, buy_price: float, reason: str = "청산") -> bool:
-    """해외주식 시장가 매도"""
-    acc_no, acc_prod = ACCOUNT_NO.split("-")
+    acc_no, acc_prod = _acc_parts()
     tr_id = "VTTT1006U" if IS_PAPER else "TTTT1006U"
 
-    # 현재가 조회
     price_data = api.get(
         "/uapi/overseas-price/v1/quotations/price",
         "HHDFS00000300",
@@ -105,8 +105,7 @@ def sell_overseas(ticker: str, name: str, exchange: str, qty: int, buy_price: fl
 
     body = {
         "CANO": acc_no,
-        "ACNT_PRDT_CD": ACCOUNT_NO.split("-")[0],
-        "ACNT_PRDT_CD": ACCOUNT_NO.split("-")[1],
+        "ACNT_PRDT_CD": acc_prod,
         "OVRS_EXCG_CD": exchange,
         "PDNO": ticker,
         "ORD_QTY": str(qty),
@@ -114,11 +113,6 @@ def sell_overseas(ticker: str, name: str, exchange: str, qty: int, buy_price: fl
         "ORD_SVR_DVSN_CD": "0",
         "ORD_DVSN": "00",
     }
-
-    # body CANO 수정
-    acc_no, acc_prod = ACCOUNT_NO.split("-")
-    body["CANO"] = acc_no
-    body["ACNT_PRDT_CD"] = acc_prod
 
     data = api.post("/uapi/overseas-stock/v1/trading/order", tr_id, body)
     if data.get("rt_cd") == "0":
