@@ -27,7 +27,7 @@ def is_domestic_open() -> bool:
 
 def is_overseas_open() -> bool:
     t = now_str()
-    return t >= "23:30" or t <= "06:00"
+    return t >= "22:30" or t <= "06:00"
 
 def is_domestic_scan_time() -> bool:
     t = now_str()
@@ -35,7 +35,7 @@ def is_domestic_scan_time() -> bool:
 
 def is_overseas_scan_time() -> bool:
     t = now_str()
-    return "23:30" <= t <= "23:59" or "00:00" <= t <= "01:00"
+    return "22:30" <= t <= "23:59" or "00:00" <= t <= "00:30"
 
 def is_domestic_force_close() -> bool:
     return now_str() >= FORCE_CLOSE_TIME
@@ -48,13 +48,13 @@ def main():
     print("=" * 55)
     print("🚀 KIS 국내 + 해외 자동매매 봇 시작")
     print(f"국내: {SCAN_START_TIME}~{SCAN_END_TIME} | 강제청산 {FORCE_CLOSE_TIME}")
-    print(f"해외: 23:30~01:00 스캔 | 강제청산 05:30")
+    print(f"해외: 22:30~00:30 스캔 | 강제청산 05:30")
     print(f"현재 KST: {now_str()}")
     print("=" * 55)
     telegram.send(
         "🚀 <b>KIS 자동매매 봇 시작</b>\n"
         "국내: 09:05~10:00 스캔\n"
-        "해외: 23:30~01:00 스캔\n"
+        "해외: 22:30~00:30 스캔\n"
         f"현재시각: {now_str()} KST"
     )
 
@@ -122,7 +122,7 @@ def main():
         #  해외장
         # ═══════════════════════════════════════════════
         if is_overseas_open():
-            if now_hm == "23:30":
+            if now_hm == "22:30":
                 os_forced_closed = False
 
             if is_overseas_force_close() and overseas_positions and not os_forced_closed:
