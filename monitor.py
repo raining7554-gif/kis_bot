@@ -1,9 +1,16 @@
+"""
+포지션 모니터링 - 트레일링 스탑 + 동적 손절
+"""
 import kis_auth as api
 import trader
-from config import TAKE_PROFIT_PCT, STOP_LOSS_PCT
+import telegram
+from strategy import TrailingStop, TRAIL_ACTIVATE_PCT, TRAIL_DROP_PCT, STOP_LOSS_PCT
+from config import FORCE_CLOSE_TIME
+
+# 트레일링 스탑 인스턴스 저장
+_trailing_stops: dict[str, TrailingStop] = {}
 
 def get_current_price(ticker: str) -> int:
-    """현재가 조회"""
     try:
         data = api.get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
@@ -14,44 +21,38 @@ def get_current_price(ticker: str) -> int:
     except:
         return 0
 
+def register_position(ticker: str, buy_price: int):
+    """새 포지션 트레일링 스탑 등록"""
+    _trailing_stops[ticker] = TrailingStop(buy_price)
+
 def check_positions(positions: dict) -> list:
     """
-    보유 포지션 체크 - 익절/손절 조건 확인
-    positions: {ticker: {name, qty, buy_price}}
-    returns: 청산된 ticker 목록
+    포지션 모니터링 - 트레일링 스탑 기반
     """
     closed = []
-
     for ticker, pos in list(positions.items()):
         current_price = get_current_price(ticker)
         if current_price == 0:
             continue
 
-        buy_price = pos["buy_price"]
-        pnl_pct = (current_price - buy_price) / buy_price
+        trail = _trailing_stops.get(ticker)
+        if not trail:
+            trail = TrailingStop(pos["buy_price"])
+            _trailing_stops[ticker] = trail
 
-        # 익절
-        if pnl_pct >= TAKE_PROFIT_PCT:
+        should_close, reason = trail.update(current_price)
+        if should_close:
             success = trader.sell_market(
-                ticker, pos["name"], pos["qty"], buy_price,
-                reason=f"익절 ({pnl_pct*100:+.2f}%)"
+                ticker, pos["name"], pos["qty"], pos["buy_price"], reason
             )
             if success:
                 closed.append(ticker)
-
-        # 손절
-        elif pnl_pct <= -STOP_LOSS_PCT:
-            success = trader.sell_market(
-                ticker, pos["name"], pos["qty"], buy_price,
-                reason=f"손절 ({pnl_pct*100:+.2f}%)"
-            )
-            if success:
-                closed.append(ticker)
+                _trailing_stops.pop(ticker, None)
 
     return closed
 
-def force_close_all(positions: dict) -> None:
-    """강제 전량 청산 (장 마감 전)"""
+def force_close_all(positions: dict):
+    """강제 전량 청산"""
     if not positions:
         return
     print("[MONITOR] 강제 청산 시작...")
@@ -60,3 +61,4 @@ def force_close_all(positions: dict) -> None:
             ticker, pos["name"], pos["qty"], pos["buy_price"],
             reason="장 마감 전 강제 청산"
         )
+    _trailing_stops.clear()
