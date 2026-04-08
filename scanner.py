@@ -9,7 +9,7 @@ def get_top_volume_stocks() -> list:
     for market in ["J", "Q"]:
         try:
             data = api.get(
-                "/uapi/domestic-stock/v1/ranking/volume",
+                "/uapi/domestic-stock/v1/quotations/volume-rank",
                 "FHPST01710000",
                 {
                     "fid_cond_mrkt_div_code": market,
@@ -27,6 +27,8 @@ def get_top_volume_stocks() -> list:
             )
             if data.get("rt_cd") == "0":
                 candidates.extend(data.get("output", []))
+            else:
+                print(f"[SCANNER] API 오류 ({market}): {data.get('msg1', '')}")
         except Exception as e:
             print(f"[SCANNER] 조회 오류 ({market}): {e}")
     return candidates
