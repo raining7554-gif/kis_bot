@@ -51,6 +51,15 @@ def main():
     print(f"해외: 22:30~00:30 스캔 | 강제청산 05:30")
     print(f"현재 KST: {now_str()}")
     print("=" * 55)
+
+    # 토큰 먼저 발급
+    import kis_auth as _auth
+    try:
+        _auth.get_access_token()
+        print("[AUTH] 초기 토큰 발급 완료")
+    except Exception as e:
+        print(f"[AUTH] 초기 토큰 발급 실패: {e}")
+    time.sleep(2)
     telegram.send(
         "🚀 <b>KIS 자동매매 봇 시작</b>\n"
         "국내: 09:05~10:00 스캔\n"
