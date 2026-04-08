@@ -44,6 +44,30 @@ def is_overseas_force_close() -> bool:
     t = now_str()
     return "05:30" <= t <= "06:00"
 
+def send_summary(domestic_positions: dict, overseas_positions: dict, trade_count: int):
+    """30분마다 종합 현황 알림"""
+    now = now_kst().strftime("%H:%M")
+    lines = [f"📊 <b>현황 요약</b> ({now} KST)"]
+
+    # 국내 포지션
+    if domestic_positions:
+        lines.append("\n🇰🇷 <b>국내 보유종목</b>")
+        for ticker, pos in domestic_positions.items():
+            lines.append(f"• {pos['name']}({ticker}) {pos['qty']}주 @ {pos['buy_price']:,}원")
+    else:
+        lines.append("\n🇰🇷 국내 보유종목 없음")
+
+    # 해외 포지션
+    if overseas_positions:
+        lines.append("\n🇺🇸 <b>해외 보유종목</b>")
+        for ticker, pos in overseas_positions.items():
+            lines.append(f"• {pos['name']}({ticker}) {pos['qty']}주 @ ${pos['buy_price']:.2f}")
+    else:
+        lines.append("\n🇺🇸 해외 보유종목 없음")
+
+    lines.append(f"\n📈 오늘 거래: {trade_count}회")
+    telegram.send("\n".join(lines))
+
 def main():
     print("=" * 55)
     print("🚀 KIS 국내 + 해외 자동매매 봇 시작")
@@ -60,9 +84,10 @@ def main():
     except Exception as e:
         print(f"[AUTH] 초기 토큰 발급 실패: {e}")
     time.sleep(2)
+
     telegram.send(
         "🚀 <b>KIS 자동매매 봇 시작</b>\n"
-        "국내: 09:05~10:00 스캔\n"
+        f"국내: {SCAN_START_TIME}~{SCAN_END_TIME} 스캔\n"
         "해외: 22:30~00:30 스캔\n"
         f"현재시각: {now_str()} KST"
     )
@@ -70,10 +95,11 @@ def main():
     domestic_positions = {}
     overseas_positions = {}
 
-    last_dom_scan    = None
-    last_os_scan     = None
-    last_dom_monitor = None
-    last_os_monitor  = None
+    last_dom_scan     = None
+    last_os_scan      = None
+    last_dom_monitor  = None
+    last_os_monitor   = None
+    last_summary_time = None   # 30분 요약 타이머
 
     dom_forced_closed = False
     os_forced_closed  = False
@@ -95,11 +121,13 @@ def main():
             if now_hm == "09:00":
                 dom_forced_closed = False
 
+            # 강제청산
             if is_domestic_force_close() and domestic_positions and not dom_forced_closed:
                 monitor.force_close_all(domestic_positions)
                 domestic_positions.clear()
                 dom_forced_closed = True
 
+            # 포지션 모니터링
             if domestic_positions and elapsed(last_dom_monitor) >= MONITOR_INTERVAL_SEC:
                 closed = monitor.check_positions(domestic_positions)
                 for t in closed:
@@ -107,12 +135,13 @@ def main():
                     trade_count += 1
                 last_dom_monitor = now
 
+            # 종목 스캔 + 매수 (텔레그램 알림 제거 - 매수 시에만 알림)
             if is_domestic_scan_time() and len(domestic_positions) < MAX_POSITIONS:
                 if elapsed(last_dom_scan) >= SCAN_INTERVAL_SEC:
                     candidates = scanner.scan_candidates(
                         exclude_tickers=list(domestic_positions.keys())
                     )
-                    telegram.send_scan_result(candidates[:5])
+                    # 스캔 결과 텔레그램 안 보냄 - 매수 시에만 알림
 
                     for c in candidates:
                         if len(domestic_positions) >= MAX_POSITIONS:
@@ -134,11 +163,13 @@ def main():
             if now_hm == "22:30":
                 os_forced_closed = False
 
+            # 강제청산
             if is_overseas_force_close() and overseas_positions and not os_forced_closed:
                 monitor_overseas.force_close_overseas(overseas_positions)
                 overseas_positions.clear()
                 os_forced_closed = True
 
+            # 포지션 모니터링
             if overseas_positions and elapsed(last_os_monitor) >= MONITOR_INTERVAL_SEC:
                 closed = monitor_overseas.check_overseas_positions(overseas_positions)
                 for t in closed:
@@ -146,16 +177,13 @@ def main():
                     trade_count += 1
                 last_os_monitor = now
 
+            # 종목 스캔 + 매수 (텔레그램 알림 제거)
             if is_overseas_scan_time() and len(overseas_positions) < MAX_POSITIONS:
                 if elapsed(last_os_scan) >= SCAN_INTERVAL_SEC:
                     candidates = scanner_overseas.scan_overseas_candidates(
                         exclude_tickers=list(overseas_positions.keys())
                     )
-                    if candidates:
-                        lines = ["📊 <b>해외 스캔 결과</b>"]
-                        for c in candidates[:5]:
-                            lines.append(f"• {c['name']} ({c['ticker']}) +{c['change_rate']:.1f}%")
-                        telegram.send("\n".join(lines))
+                    # 스캔 결과 텔레그램 안 보냄
 
                     for c in candidates:
                         if len(overseas_positions) >= MAX_POSITIONS:
@@ -170,8 +198,23 @@ def main():
 
                     last_os_scan = now
 
-        if now_hm == "15:31" and trade_count > 0:
-            telegram.send(f"📋 <b>오늘 국내 거래 횟수: {trade_count}회</b>")
+        # ═══════════════════════════════════════════════
+        #  30분마다 종합 현황 알림
+        # ═══════════════════════════════════════════════
+        if elapsed(last_summary_time) >= 1800:  # 30분 = 1800초
+            if is_domestic_open() or is_overseas_open():
+                send_summary(domestic_positions, overseas_positions, trade_count)
+            last_summary_time = now
+
+        # ═══════════════════════════════════════════════
+        #  일일 결산 (15:31)
+        # ═══════════════════════════════════════════════
+        if now_hm == "15:31":
+            telegram.send(
+                f"📋 <b>오늘 결산</b>\n"
+                f"거래 횟수: {trade_count}회"
+            )
+            trade_count = 0
 
         time.sleep(5)
 
