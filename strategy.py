@@ -9,15 +9,14 @@ from config import ACCOUNT_NO, IS_PAPER
 MARKET_REGIME_SHORT = 5     # 시장 필터 단기 MA
 MARKET_REGIME_LONG  = 20    # 시장 필터 장기 MA
 
-SCAN_MIN_CHANGE   = 2.0     # 최소 상승률 (%)
-SCAN_MAX_CHANGE   = 7.0     # 최대 상승률 (%)
-SCAN_VOL_RATIO    = 5.0     # 거래량 배수
-SCAN_MIN_PRICE    = 5_000   # 최소 주가
-SCAN_MAX_PRICE    = 100_000 # 최대 주가
-SCAN_MIN_MKTCAP   = 100_000_000_000  # 최소 시총 1000억
+SCAN_MIN_CHANGE   = 1.0     # 최소 상승률 (%) - 테스트용 완화
+SCAN_MAX_CHANGE   = 10.0    # 최대 상승률 (%)
+SCAN_VOL_RATIO    = 2.0     # 거래량 배수 - 테스트용 완화
+SCAN_MIN_PRICE    = 1_000   # 최소 주가 (완화)
+SCAN_MAX_PRICE    = 200_000 # 최대 주가 (완화)
 
-RSI_MIN = 50   # RSI 최소 (모멘텀 확인)
-RSI_MAX = 70   # RSI 최대 (과열 제외)
+RSI_MIN = 40   # RSI 최소 (완화)
+RSI_MAX = 75   # RSI 최대 (완화)
 
 BASE_POSITION_PCT  = 0.10   # 기본 포지션 비율
 HIGH_VOL_POSITION  = 0.07   # 고변동성시 포지션
