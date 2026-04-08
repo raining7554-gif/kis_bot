@@ -14,14 +14,14 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 POSITION_SIZE_PCT   = 0.10   # 총 자산의 10%씩 진입
 MAX_POSITIONS       = 3      # 동시 최대 보유 종목 수
 
-SCAN_START_TIME     = "09:05"  # 스캔 시작 (장 초반 변동성 안정 후)
-SCAN_END_TIME       = "10:00"  # 스캔 종료
+SCAN_START_TIME     = "09:05"  # 스캔 시작
+SCAN_END_TIME       = "14:00"  # 스캔 종료 (테스트용 연장)
 FORCE_CLOSE_TIME    = "14:30"  # 강제 청산 시간
 
-# 종목 스캔 조건
-MIN_VOLUME_RATIO    = 5.0    # 20일 평균 거래량 대비 N배 이상
-MIN_CHANGE_RATE     = 3.0    # 당일 상승률 최소 (%)
-MAX_CHANGE_RATE     = 8.0    # 당일 상승률 최대 (%) - 너무 많이 오른 건 제외
+# 종목 스캔 조건 (테스트용 완화)
+MIN_VOLUME_RATIO    = 2.0    # 20일 평균 거래량 대비 N배 (5→2 완화)
+MIN_CHANGE_RATE     = 1.0    # 당일 상승률 최소 (3→1% 완화)
+MAX_CHANGE_RATE     = 10.0   # 당일 상승률 최대 (8→10% 완화)
 
 # 익절/손절
 TAKE_PROFIT_PCT     = 0.02   # +2% 익절
