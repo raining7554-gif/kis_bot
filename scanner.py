@@ -6,31 +6,39 @@ from strategy import is_valid_entry, is_bull_market
 
 def get_top_volume_stocks() -> list:
     candidates = []
-    for market in ["J", "Q"]:
+    # volume-rank API 마켓코드: J=코스피, Q=코스닥
+    # 코스닥은 별도 scr_div_code 필요
+    market_configs = [
+        {"market": "J", "scr": "20171"},  # 코스피
+        {"market": "Q", "scr": "20172"},  # 코스닥
+    ]
+    for cfg in market_configs:
         try:
             data = api.get(
                 "/uapi/domestic-stock/v1/quotations/volume-rank",
                 "FHPST01710000",
                 {
-                    "fid_cond_mrkt_div_code": market,
-                    "fid_cond_scr_div_code": "20171",
+                    "fid_cond_mrkt_div_code": cfg["market"],
+                    "fid_cond_scr_div_code": cfg["scr"],
                     "fid_input_iscd": "0000",
                     "fid_div_cls_code": "0",
                     "fid_blng_cls_code": "0",
                     "fid_trgt_cls_code": "111111111",
                     "fid_trgt_exls_cls_code": "000000",
-                    "fid_input_price_1": "5000",
-                    "fid_input_price_2": "100000",
+                    "fid_input_price_1": "1000",
+                    "fid_input_price_2": "200000",
                     "fid_vol_cnt": "100000",
                     "fid_input_date_1": "",
                 }
             )
             if data.get("rt_cd") == "0":
-                candidates.extend(data.get("output", []))
+                results = data.get("output", [])
+                candidates.extend(results)
+                print(f"[SCANNER] {cfg['market']} 거래량 상위 {len(results)}개 조회 완료")
             else:
-                print(f"[SCANNER] API 오류 ({market}): {data.get('msg1', '')}")
+                print(f"[SCANNER] API 오류 ({cfg['market']}): {data.get('msg1', '')}")
         except Exception as e:
-            print(f"[SCANNER] 조회 오류 ({market}): {e}")
+            print(f"[SCANNER] 조회 오류 ({cfg['market']}): {e}")
     return candidates
 
 def get_stock_detail(ticker: str) -> dict:
