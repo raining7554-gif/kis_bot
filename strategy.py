@@ -53,13 +53,8 @@ def get_kospi_ma() -> tuple[float, float]:
     return 0, 0
 
 def is_bull_market() -> bool:
-    """상승장 여부 (5MA > 20MA)"""
-    ma5, ma20 = get_kospi_ma()
-    if ma5 == 0 or ma20 == 0:
-        return True  # 조회 실패시 허용
-    result = ma5 > ma20
-    print(f"[STRATEGY] 시장 필터: KOSPI MA5={ma5:.0f} MA20={ma20:.0f} → {'📈 상승장' if result else '📉 하락장 (매수 중단)'}")
-    return result
+    """시장 필터 - 테스트용 임시 비활성화"""
+    return True
 
 # ── RSI 계산 ──────────────────────────────────────────
 def calc_rsi(prices: list[float], period: int = 14) -> float:
