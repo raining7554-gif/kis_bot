@@ -1,21 +1,20 @@
 """
-종목 스캐너 - 복합 필터 모멘텀 전략
+스캐너 v2.0 - 시장 국면별 종목 스캔
 """
 import kis_auth as api
-from strategy import is_valid_entry, is_bull_market
+from strategy import is_valid_entry, get_market_regime
 
 def get_top_volume_stocks() -> list:
-    """거래량 상위 종목 조회 (코스피+코스닥 통합)"""
     try:
         data = api.get(
             "/uapi/domestic-stock/v1/quotations/volume-rank",
             "FHPST01710000",
             {
-                "fid_cond_mrkt_div_code": "J",    # J = 코스피+코스닥 전체
+                "fid_cond_mrkt_div_code": "J",
                 "fid_cond_scr_div_code": "20171",
-                "fid_input_iscd": "0000",          # 0000 = 전체 종목
+                "fid_input_iscd": "0000",
                 "fid_div_cls_code": "0",
-                "fid_blng_cls_code": "0",          # 0 = 전체(코스피+코스닥)
+                "fid_blng_cls_code": "0",
                 "fid_trgt_cls_code": "111111111",
                 "fid_trgt_exls_cls_code": "000000",
                 "fid_input_price_1": "1000",
@@ -26,12 +25,44 @@ def get_top_volume_stocks() -> list:
         )
         if data.get("rt_cd") == "0":
             results = data.get("output", [])
-            print(f"[SCANNER] 거래량 상위 {len(results)}개 조회 완료 (코스피+코스닥)")
+            print(f"[SCANNER] 거래량 상위 {len(results)}개 조회 완료")
             return results
         else:
             print(f"[SCANNER] API 오류: {data.get('msg1', '')}")
     except Exception as e:
         print(f"[SCANNER] 조회 오류: {e}")
+    return []
+
+def get_oversold_stocks() -> list:
+    """
+    공포매수용: 급락 + 과매도 종목 스캔
+    하락률 상위 종목에서 반등 후보 찾기
+    """
+    try:
+        # 하락률 상위 (낙폭과대 종목)
+        data = api.get(
+            "/uapi/domestic-stock/v1/quotations/volume-rank",
+            "FHPST01710000",
+            {
+                "fid_cond_mrkt_div_code": "J",
+                "fid_cond_scr_div_code": "20171",
+                "fid_input_iscd": "0000",
+                "fid_div_cls_code": "0",
+                "fid_blng_cls_code": "1",   # 하락 종목
+                "fid_trgt_cls_code": "111111111",
+                "fid_trgt_exls_cls_code": "000000",
+                "fid_input_price_1": "2000",
+                "fid_input_price_2": "200000",
+                "fid_vol_cnt": "500000",
+                "fid_input_date_1": "",
+            }
+        )
+        if data.get("rt_cd") == "0":
+            results = data.get("output", [])
+            print(f"[SCANNER] 과매도 후보 {len(results)}개 조회 완료")
+            return results
+    except Exception as e:
+        print(f"[SCANNER] 과매도 조회 오류: {e}")
     return []
 
 def get_stock_detail(ticker: str) -> dict:
@@ -52,35 +83,42 @@ def get_average_volume(ticker: str, days: int = 20) -> float:
         data = api.get(
             "/uapi/domestic-stock/v1/quotations/inquire-daily-price",
             "FHKST01010400",
-            {
-                "fid_cond_mrkt_div_code": "J",
-                "fid_input_iscd": ticker,
-                "fid_org_adj_prc": "1",
-                "fid_period_div_code": "D",
-            }
+            {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": ticker,
+             "fid_org_adj_prc": "1", "fid_period_div_code": "D"}
         )
         if data.get("rt_cd") == "0":
             outputs = data.get("output2", [])[:days]
             volumes = [int(o.get("acml_vol", 0)) for o in outputs if o.get("acml_vol")]
             if volumes:
                 return sum(volumes) / len(volumes)
-    except Exception as e:
-        print(f"[SCANNER] 평균거래량 오류 ({ticker}): {e}")
+    except:
+        pass
     return 0
 
 def scan_candidates(exclude_tickers: list = []) -> list:
-    """복합 필터 종목 스캔"""
+    """시장 국면에 따라 다른 스캔 전략 적용"""
 
-    # ① 시장 필터 먼저
-    if not is_bull_market():
-        print("[SCANNER] 📉 하락장 감지 - 오늘 매수 중단")
+    # 시장 국면 분석
+    regime_info = get_market_regime()
+    regime = regime_info["regime"]
+
+    print(f"[SCANNER] 스캔 시작 - 국면: {regime}")
+
+    # 국면별 종목 풀 선택
+    if regime == "CRASH":
+        stock_pool = get_oversold_stocks()
+        if not stock_pool:
+            stock_pool = get_top_volume_stocks()
+    else:
+        stock_pool = get_top_volume_stocks()
+
+    if not stock_pool:
+        print("[SCANNER] 종목 풀 비어있음")
         return []
 
-    print("[SCANNER] 종목 스캔 시작...")
-    top_stocks = get_top_volume_stocks()
     candidates = []
 
-    for stock in top_stocks[:60]:
+    for stock in stock_pool[:60]:
         ticker = stock.get("mksc_shrn_iscd", "")
         if not ticker or ticker in exclude_tickers:
             continue
@@ -95,12 +133,12 @@ def scan_candidates(exclude_tickers: list = []) -> list:
         name          = detail.get("hts_kor_isnm", ticker)
 
         avg_vol = get_average_volume(ticker)
-        if avg_vol == 0:
-            continue
-        vol_ratio = today_vol / avg_vol
+        vol_ratio = today_vol / avg_vol if avg_vol > 0 else 0
 
-        # ② 복합 필터 진입 판단
-        valid, reason = is_valid_entry(ticker, current_price, change_rate, vol_ratio)
+        valid, reason, strategy_type = is_valid_entry(
+            ticker, current_price, change_rate, vol_ratio, regime
+        )
+
         if not valid:
             continue
 
@@ -111,9 +149,16 @@ def scan_candidates(exclude_tickers: list = []) -> list:
             "change_rate": change_rate,
             "vol_ratio": vol_ratio,
             "reason": reason,
+            "strategy_type": strategy_type,
+            "regime": regime,
         })
-        print(f"[SCANNER] ✅ {name}({ticker}) +{change_rate:.1f}% 거래량{vol_ratio:.1f}배")
+        print(f"[SCANNER] ✅ {name}({ticker}) {strategy_type} {reason}")
 
-    candidates.sort(key=lambda x: x["vol_ratio"], reverse=True)
-    print(f"[SCANNER] 스캔 완료 - {len(candidates)}개 종목 통과")
+    # 공포매수는 거래량 많은 순, 모멘텀은 상승률 순
+    if regime == "CRASH":
+        candidates.sort(key=lambda x: x["vol_ratio"], reverse=True)
+    else:
+        candidates.sort(key=lambda x: (x["vol_ratio"] * x["change_rate"]), reverse=True)
+
+    print(f"[SCANNER] 완료 - {len(candidates)}개 통과 (국면: {regime})")
     return candidates
