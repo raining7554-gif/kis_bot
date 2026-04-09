@@ -55,8 +55,8 @@ BEAR_WATCHLIST = [
     {"ticker": "TSLQ",  "name": "테슬라인버스",     "exchange": "NAS"},
 ]
 
-MIN_CHANGE_RATE_BULL = 1.5
-MAX_CHANGE_RATE_BULL = 8.0
+MIN_CHANGE_RATE_BULL = 0.5
+MAX_CHANGE_RATE_BULL = 12.0
 MIN_CHANGE_RATE_BEAR = 1.5   # 인버스는 시장 하락 시 상승
 MAX_CHANGE_RATE_BEAR = 15.0  # 인버스 폭발 가능성
 
