@@ -176,6 +176,7 @@ def main():
     dom_forced = False
     os_forced  = False
     trade_count = 0
+    sent_closing = False
 
     while True:
         now = now_kst()
@@ -188,6 +189,7 @@ def main():
         if is_domestic_open():
             if now_hm == "09:00":
                 dom_forced = False
+                sent_closing = False
 
             if is_domestic_force_close() and dom_pos and not dom_forced:
                 monitor.force_close_all(dom_pos)
@@ -264,7 +266,7 @@ def main():
             last_summary = now
 
         # ════ 일일 결산 15:31 ═══════════════════════════
-        if now_hm == "15:31":
+        if now_hm == "15:31" and not sent_closing:
             bal = get_balance_info()
             msg = f"📋 <b>오늘 결산</b>\n거래: {trade_count}회"
             if bal:
@@ -275,6 +277,7 @@ def main():
                 )
             telegram.send(msg)
             trade_count = 0
+            sent_closing = True
 
         time.sleep(5)
 
