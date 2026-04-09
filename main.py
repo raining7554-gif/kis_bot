@@ -1,8 +1,4 @@
-"""
-KIS 자동매매 봇 v2.0 - 최적 통합 전략
-국내: 하이브리드(모멘텀+공포매수) + 국면 자동전환
-해외: 상승장=롱ETF, 하락장=인버스ETF 자동전환
-"""
+"""KIS 자동매매 봇 v2.1"""
 import time
 from datetime import datetime
 import pytz
@@ -49,15 +45,26 @@ def is_overseas_force_close() -> bool:
 
 def get_balance_info() -> dict:
     try:
-        acc_no, acc_prod = ACCOUNT_NO.split("-") if "-" in ACCOUNT_NO else (ACCOUNT_NO, "01")
+        parts = ACCOUNT_NO.split("-")
+        acc_no   = parts[0]
+        acc_prod = parts[1] if len(parts) > 1 else "01"
         tr_id = "VTTC8434R" if IS_PAPER else "TTTC8434R"
         data = api.get(
-            "/uapi/domestic-stock/v1/trading/inquire-balance", tr_id,
-            {"CANO": acc_no, "ACNT_PRDT_CD": acc_prod,
-             "AFHR_FLPR_YN": "N", "OFL_YN": "N", "INQR_DVSN": "01",
-             "UNPR_DVSN": "01", "FUND_STTL_ICLD_YN": "N",
-             "FNCG_AMT_AUTO_RDPT_YN": "N", "PRCS_DVSN": "00",
-             "CTX_AREA_FK100": "", "CTX_AREA_NK100": ""}
+            "/uapi/domestic-stock/v1/trading/inquire-balance",
+            tr_id,
+            {
+                "CANO": acc_no,
+                "ACNT_PRDT_CD": acc_prod,
+                "AFHR_FLPR_YN": "N",
+                "OFL_YN": "N",
+                "INQR_DVSN": "02",
+                "UNPR_DVSN": "01",
+                "FUND_STTL_ICLD_YN": "N",
+                "FNCG_AMT_AUTO_RDPT_YN": "N",
+                "PRCS_DVSN": "00",
+                "CTX_AREA_FK100": "",
+                "CTX_AREA_NK100": "",
+            }
         )
         if data.get("rt_cd") == "0":
             o = data.get("output2", [{}])[0]
@@ -68,8 +75,10 @@ def get_balance_info() -> dict:
                 "eval_profit": int(o.get("evlu_pfls_smtl_amt", 0)),
                 "profit_rate": float(o.get("asst_icdc_erng_rt", 0)),
             }
+        else:
+            print(f"[BALANCE] API 오류: {data.get('msg1', '')}")
     except Exception as e:
-        print(f"[MAIN] 잔고 조회 오류: {e}")
+        print(f"[BALANCE] 오류: {e}")
     return {}
 
 def send_summary(dom_pos: dict, os_pos: dict, trade_count: int):
@@ -83,20 +92,28 @@ def send_summary(dom_pos: dict, os_pos: dict, trade_count: int):
             f"\n💰 <b>계좌 잔고</b>\n"
             f"총평가: {bal['total_eval']:,}원\n"
             f"주문가능: {bal['available']:,}원\n"
+            f"매수금액: {bal['buy_amount']:,}원\n"
             f"{em} 평가손익: {bal['eval_profit']:+,}원 ({bal['profit_rate']:+.2f}%)"
         )
+    else:
+        lines.append("\n💰 잔고 조회 실패")
 
     if dom_pos:
         lines.append("\n🇰🇷 <b>국내 보유</b>")
         for ticker, pos in dom_pos.items():
             try:
-                pd = api.get("/uapi/domestic-stock/v1/quotations/inquire-price",
-                    "FHKST01010100", {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": ticker})
+                pd = api.get(
+                    "/uapi/domestic-stock/v1/quotations/inquire-price",
+                    "FHKST01010100",
+                    {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": ticker}
+                )
                 cur = int(pd.get("output", {}).get("stck_prpr", pos["buy_price"]))
                 pnl = (cur - pos["buy_price"]) / pos["buy_price"] * 100
                 em = "🟢" if pnl >= 0 else "🔴"
-                stype = pos.get("strategy_type", "")
-                lines.append(f"• {pos['name']}({ticker}) [{stype}]\n  {pos['buy_price']:,}→{cur:,}원 {em}{pnl:+.2f}%")
+                lines.append(
+                    f"• {pos['name']}({ticker})\n"
+                    f"  {pos['buy_price']:,}→{cur:,}원 {em}{pnl:+.2f}%"
+                )
             except:
                 lines.append(f"• {pos['name']}({ticker}) {pos['qty']}주")
     else:
@@ -106,12 +123,18 @@ def send_summary(dom_pos: dict, os_pos: dict, trade_count: int):
         lines.append("\n🇺🇸 <b>해외 보유</b>")
         for ticker, pos in os_pos.items():
             try:
-                pd = api.get("/uapi/overseas-price/v1/quotations/price",
-                    "HHDFS00000300", {"AUTH": "", "EXCD": pos["exchange"], "SYMB": ticker})
+                pd = api.get(
+                    "/uapi/overseas-price/v1/quotations/price",
+                    "HHDFS00000300",
+                    {"AUTH": "", "EXCD": pos["exchange"], "SYMB": ticker}
+                )
                 cur = float(pd.get("output", {}).get("last", pos["buy_price"]))
                 pnl = (cur - pos["buy_price"]) / pos["buy_price"] * 100
                 em = "🟢" if pnl >= 0 else "🔴"
-                lines.append(f"• {pos['name']}({ticker})\n  ${pos['buy_price']:.2f}→${cur:.2f} {em}{pnl:+.2f}%")
+                lines.append(
+                    f"• {pos['name']}({ticker})\n"
+                    f"  ${pos['buy_price']:.2f}→${cur:.2f} {em}{pnl:+.2f}%"
+                )
             except:
                 lines.append(f"• {pos['name']}({ticker}) {pos['qty']}주")
     else:
@@ -122,8 +145,7 @@ def send_summary(dom_pos: dict, os_pos: dict, trade_count: int):
 
 def main():
     print("=" * 55)
-    print("🚀 KIS 자동매매 봇 v2.0 시작")
-    print("전략: 하이브리드(모멘텀+공포매수+인버스) 최적화")
+    print("🚀 KIS 자동매매 봇 v2.1")
     print(f"국내: {SCAN_START_TIME}~{SCAN_END_TIME} | 강제청산 {FORCE_CLOSE_TIME}")
     print(f"해외: 22:30~00:30 | 강제청산 05:30")
     print(f"현재 KST: {now_str()}")
@@ -137,10 +159,8 @@ def main():
     time.sleep(2)
 
     telegram.send(
-        "🚀 <b>KIS 봇 v2.0 시작</b>\n"
-        "전략: 하이브리드 최적화\n"
-        "• 상승장 → 모멘텀 단타\n"
-        "• 하락장 → 공포매수 + 인버스ETF\n"
+        "🚀 <b>KIS 봇 v2.1 시작</b>\n"
+        "전략: 하이브리드 (모멘텀+공포매수+인버스)\n"
         f"현재: {now_str()} KST"
     )
 
@@ -164,9 +184,7 @@ def main():
         def elapsed(t):
             return 9999 if t is None else (now - t).seconds
 
-        # ════════════════════════════════════════════════
-        # 국내장
-        # ════════════════════════════════════════════════
+        # ════ 국내장 ════════════════════════════════════
         if is_domestic_open():
             if now_hm == "09:00":
                 dom_forced = False
@@ -205,9 +223,7 @@ def main():
                             trade_count += 1
                     last_dom_scan = now
 
-        # ════════════════════════════════════════════════
-        # 해외장
-        # ════════════════════════════════════════════════
+        # ════ 해외장 ════════════════════════════════════
         if is_overseas_open():
             if now_hm == "22:30":
                 os_forced = False
@@ -241,21 +257,22 @@ def main():
                             trade_count += 1
                     last_os_scan = now
 
-        # ════════════════════════════════════════════════
-        # 30분마다 현황
-        # ════════════════════════════════════════════════
+        # ════ 30분마다 현황 ═════════════════════════════
         if elapsed(last_summary) >= 1800:
             if is_domestic_open() or is_overseas_open():
                 send_summary(dom_pos, os_pos, trade_count)
             last_summary = now
 
-        # 일일 결산
+        # ════ 일일 결산 15:31 ═══════════════════════════
         if now_hm == "15:31":
             bal = get_balance_info()
             msg = f"📋 <b>오늘 결산</b>\n거래: {trade_count}회"
             if bal:
                 em = "📈" if bal["eval_profit"] >= 0 else "📉"
-                msg += f"\n총평가: {bal['total_eval']:,}원\n{em} 손익: {bal['eval_profit']:+,}원 ({bal['profit_rate']:+.2f}%)"
+                msg += (
+                    f"\n총평가: {bal['total_eval']:,}원\n"
+                    f"{em} 손익: {bal['eval_profit']:+,}원 ({bal['profit_rate']:+.2f}%)"
+                )
             telegram.send(msg)
             trade_count = 0
 
