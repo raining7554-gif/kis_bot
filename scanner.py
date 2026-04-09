@@ -1,6 +1,4 @@
-"""
-스캐너 v2.0 - 시장 국면별 종목 스캔
-"""
+"""스캐너 v2.2 - 디버그 로그 + 조건 완화"""
 import kis_auth as api
 from strategy import is_valid_entry, get_market_regime
 
@@ -31,38 +29,6 @@ def get_top_volume_stocks() -> list:
             print(f"[SCANNER] API 오류: {data.get('msg1', '')}")
     except Exception as e:
         print(f"[SCANNER] 조회 오류: {e}")
-    return []
-
-def get_oversold_stocks() -> list:
-    """
-    공포매수용: 급락 + 과매도 종목 스캔
-    하락률 상위 종목에서 반등 후보 찾기
-    """
-    try:
-        # 하락률 상위 (낙폭과대 종목)
-        data = api.get(
-            "/uapi/domestic-stock/v1/quotations/volume-rank",
-            "FHPST01710000",
-            {
-                "fid_cond_mrkt_div_code": "J",
-                "fid_cond_scr_div_code": "20171",
-                "fid_input_iscd": "0000",
-                "fid_div_cls_code": "0",
-                "fid_blng_cls_code": "1",   # 하락 종목
-                "fid_trgt_cls_code": "111111111",
-                "fid_trgt_exls_cls_code": "000000",
-                "fid_input_price_1": "2000",
-                "fid_input_price_2": "200000",
-                "fid_vol_cnt": "500000",
-                "fid_input_date_1": "",
-            }
-        )
-        if data.get("rt_cd") == "0":
-            results = data.get("output", [])
-            print(f"[SCANNER] 과매도 후보 {len(results)}개 조회 완료")
-            return results
-    except Exception as e:
-        print(f"[SCANNER] 과매도 조회 오류: {e}")
     return []
 
 def get_stock_detail(ticker: str) -> dict:
@@ -96,27 +62,17 @@ def get_average_volume(ticker: str, days: int = 20) -> float:
     return 0
 
 def scan_candidates(exclude_tickers: list = []) -> list:
-    """시장 국면에 따라 다른 스캔 전략 적용"""
-
-    # 시장 국면 분석
     regime_info = get_market_regime()
     regime = regime_info["regime"]
-
     print(f"[SCANNER] 스캔 시작 - 국면: {regime}")
 
-    # 국면별 종목 풀 선택
-    if regime == "CRASH":
-        stock_pool = get_oversold_stocks()
-        if not stock_pool:
-            stock_pool = get_top_volume_stocks()
-    else:
-        stock_pool = get_top_volume_stocks()
-
+    stock_pool = get_top_volume_stocks()
     if not stock_pool:
         print("[SCANNER] 종목 풀 비어있음")
         return []
 
     candidates = []
+    reject_summary = {}  # 탈락 이유 집계
 
     for stock in stock_pool[:60]:
         ticker = stock.get("mksc_shrn_iscd", "")
@@ -140,6 +96,9 @@ def scan_candidates(exclude_tickers: list = []) -> list:
         )
 
         if not valid:
+            # 탈락 이유 집계 (로그 도배 방지)
+            key = reason.split(" ")[0]
+            reject_summary[key] = reject_summary.get(key, 0) + 1
             continue
 
         candidates.append({
@@ -152,9 +111,13 @@ def scan_candidates(exclude_tickers: list = []) -> list:
             "strategy_type": strategy_type,
             "regime": regime,
         })
-        print(f"[SCANNER] ✅ {name}({ticker}) {strategy_type} {reason}")
+        print(f"[SCANNER] ✅ {name}({ticker}) +{change_rate:.1f}% 거래량{vol_ratio:.0f}배")
 
-    # 공포매수는 거래량 많은 순, 모멘텀은 상승률 순
+    # 탈락 요약 출력
+    if reject_summary:
+        summary = " | ".join([f"{k}:{v}개" for k, v in reject_summary.items()])
+        print(f"[SCANNER] 탈락 요약: {summary}")
+
     if regime == "CRASH":
         candidates.sort(key=lambda x: x["vol_ratio"], reverse=True)
     else:
