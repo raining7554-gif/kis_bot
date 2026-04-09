@@ -34,7 +34,7 @@ def is_domestic_scan_time() -> bool:
 
 def is_overseas_scan_time() -> bool:
     t = now_str()
-    return "22:30" <= t <= "23:59" or "00:00" <= t <= "00:30"
+    return "22:30" <= t <= "23:59" or "00:00" <= t <= "04:30"
 
 def is_domestic_force_close() -> bool:
     return now_str() >= FORCE_CLOSE_TIME
