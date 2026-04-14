@@ -1,48 +1,104 @@
-"""모니터링 v2.0 - 전략유형별 트레일링 스탑"""
+"""모니터링 v3.0 — 스윙 포지션 관리
+
+장중: 하드 손절 + 트레일링 체크 (15초마다)
+장마감 직전(15:15): 일봉 청산 조건 체크 (20일선 이탈/최대 보유일)
+"""
+from datetime import date
 import kis_auth as api
 import trader
-from strategy import TrailingStop
+from strategy import SwingStop, check_eod_exit
 
-_trailing_stops = {}
+
+# ticker -> SwingStop 인스턴스
+_stops: dict = {}
+# ticker -> 진입일(date)
+_entry_dates: dict = {}
+
 
 def get_current_price(ticker: str) -> int:
     try:
         data = api.get(
             "/uapi/domestic-stock/v1/quotations/inquire-price",
             "FHKST01010100",
-            {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": ticker}
+            {"fid_cond_mrkt_div_code": "J", "fid_input_iscd": ticker},
         )
         return int(data.get("output", {}).get("stck_prpr", 0))
-    except:
+    except Exception:
         return 0
 
-def register_position(ticker: str, buy_price: int, strategy_type: str = "MOMENTUM"):
-    _trailing_stops[ticker] = TrailingStop(buy_price, strategy_type)
+
+def register_position(ticker: str, buy_price: float, strategy_type: str = "SWING"):
+    _stops[ticker] = SwingStop(buy_price)
+    _entry_dates[ticker] = date.today()
+
+
+def unregister(ticker: str):
+    _stops.pop(ticker, None)
+    _entry_dates.pop(ticker, None)
+
+
+def _ensure_stop(ticker: str, pos: dict):
+    if ticker not in _stops:
+        _stops[ticker] = SwingStop(pos["buy_price"])
+    if ticker not in _entry_dates:
+        _entry_dates[ticker] = date.today()
+
+
+def _hold_days(ticker: str) -> int:
+    from market_calendar import is_trading_day
+    from datetime import timedelta
+    start = _entry_dates.get(ticker)
+    if not start:
+        return 0
+    days = 0
+    d = start
+    today = date.today()
+    while d < today:
+        d += timedelta(days=1)
+        if is_trading_day(d):
+            days += 1
+    return days
+
 
 def check_positions(positions: dict) -> list:
+    """장중 실시간 체크"""
     closed = []
     for ticker, pos in list(positions.items()):
         current_price = get_current_price(ticker)
         if current_price == 0:
             continue
-        trail = _trailing_stops.get(ticker)
-        if not trail:
-            strategy_type = pos.get("strategy_type", "MOMENTUM")
-            trail = TrailingStop(pos["buy_price"], strategy_type)
-            _trailing_stops[ticker] = trail
 
-        should_close, reason = trail.update(current_price)
+        _ensure_stop(ticker, pos)
+        stop = _stops[ticker]
+        should_close, reason = stop.update_intraday(current_price)
+
         if should_close:
-            success = trader.sell_market(ticker, pos["name"], pos["qty"], pos["buy_price"], reason)
-            if success:
+            if trader.sell_market(ticker, pos["name"], pos["qty"], pos["buy_price"], reason):
                 closed.append(ticker)
-                _trailing_stops.pop(ticker, None)
+                unregister(ticker)
     return closed
 
+
+def check_eod(positions: dict) -> list:
+    """일봉 기준 청산 체크 (장마감 직전 1회)"""
+    closed = []
+    for ticker, pos in list(positions.items()):
+        _ensure_stop(ticker, pos)
+        hold = _hold_days(ticker)
+        should_exit, reason = check_eod_exit(ticker, pos["buy_price"], hold)
+        if should_exit:
+            full_reason = f"[EOD] {reason}"
+            if trader.sell_market(ticker, pos["name"], pos["qty"], pos["buy_price"], full_reason):
+                closed.append(ticker)
+                unregister(ticker)
+    return closed
+
+
 def force_close_all(positions: dict):
+    """긴급 전량 청산 (일반적으로 사용 안 함 — 스윙이므로)"""
     if not positions:
         return
-    print("[MONITOR] 강제 청산 시작...")
+    print("[MONITOR] 긴급 전량 청산")
     for ticker, pos in list(positions.items()):
-        trader.sell_market(ticker, pos["name"], pos["qty"], pos["buy_price"], "장마감 강제청산")
-    _trailing_stops.clear()
+        trader.sell_market(ticker, pos["name"], pos["qty"], pos["buy_price"], "긴급 청산")
+        unregister(ticker)
