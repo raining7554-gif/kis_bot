@@ -41,8 +41,8 @@ DOM_MAX_HOLD_DAYS  = 10             # 최대 10영업일
 OS_ASSUMED_SEED_USD = 350           # 약 50만원
 
 # 운영 시간 (KST 기준, 서머타임 고려 않고 넉넉히)
-OS_SCAN_TIME_START  = "22:45"       # 미장 개장 직후 1회만 진입
-OS_SCAN_TIME_END    = "23:15"
+OS_SCAN_TIME_START  = "22:30"       # 미장 개장 직후 1회만 진입
+OS_SCAN_TIME_END    = "23:30"
 OS_EOD_CHECK        = "05:45"       # 미장 종료 직전 일봉 청산 체크
 
 # 포지션
