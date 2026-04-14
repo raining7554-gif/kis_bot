@@ -7,6 +7,7 @@ import trader, trader_overseas
 import monitor, monitor_overseas
 import telegram
 import kis_auth as api
+from market_calendar import is_trading_day
 from config import (
     SCAN_START_TIME, SCAN_END_TIME, FORCE_CLOSE_TIME,
     MAX_POSITIONS, SCAN_INTERVAL_SEC, MONITOR_INTERVAL_SEC,
@@ -22,6 +23,8 @@ def now_str() -> str:
     return now_kst().strftime("%H:%M")
 
 def is_domestic_open() -> bool:
+    if not is_trading_day(now_kst()):
+        return False
     t = now_str()
     return "09:00" <= t <= "15:30"
 
@@ -30,6 +33,8 @@ def is_overseas_open() -> bool:
     return t >= "22:30" or t <= "06:00"
 
 def is_domestic_scan_time() -> bool:
+    if not is_trading_day(now_kst()):
+        return False
     return SCAN_START_TIME <= now_str() <= SCAN_END_TIME
 
 def is_overseas_scan_time() -> bool:
@@ -266,7 +271,7 @@ def main():
             last_summary = now
 
         # ════ 일일 결산 15:31 ═══════════════════════════
-        if now_hm == "15:31" and not sent_closing:
+        if now_hm == "15:31" and not sent_closing and is_trading_day(now_kst()):
             bal = get_balance_info()
             msg = f"📋 <b>오늘 결산</b>\n거래: {trade_count}회"
             if bal:

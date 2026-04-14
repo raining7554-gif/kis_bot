@@ -103,7 +103,6 @@ def get_position_size_pct(ticker: str) -> float:
         pct = LOW_VOL_POSITION
     else:
         pct = BASE_POSITION_PCT
-    print(f"[STRATEGY] {ticker} ATR={atr_pct:.1f}% → 포지션 {pct*100:.0f}%")
     return pct
 
 # ── 진입 판단 (단순화) ────────────────────────────────

@@ -1,6 +1,19 @@
-"""스캐너 v2.3 - 초단순 버전 (테스트용)"""
+"""스캐너 v2.4 - 거래정지/파생ETF 필터 추가"""
 import kis_auth as api
 from strategy import get_market_regime
+
+# 파생/레버리지 ETF 등 별도 계좌 권한이 필요한 종목 이름 키워드
+_BLOCKED_KEYWORDS = (
+    "레버리지", "인버스", "2X", "선물", "ETN",
+    "곱버스", "3X", "X2", "X3",
+)
+
+def _is_blocked_name(name: str) -> bool:
+    if not name:
+        return False
+    up = name.upper()
+    return any(k.upper() in up for k in _BLOCKED_KEYWORDS)
+
 
 def get_top_volume_stocks() -> list:
     try:
@@ -68,8 +81,21 @@ def scan_candidates(exclude_tickers: list = []) -> list:
         current_price = int(detail.get("stck_prpr", 0))
         name          = detail.get("hts_kor_isnm", ticker)
 
-        # ── 최소 조건만 체크 ──────────────────────────
-        # 상승률 0.5% 이상 (하락 종목 제외)
+        # ── 거래정지/관리종목 등 필터 ─────────────────
+        # iscd_stat_cls_code: 00=정상, 51=관리, 52=투자주의, 53=투자경고,
+        #                     54=투자위험, 55=거래정지, 58=거래중단, 59=단기과열
+        stat = str(detail.get("iscd_stat_cls_code", "00"))
+        if stat != "00":
+            print(f"[SCANNER] ⏭️  {name}({ticker}) 종목상태={stat} 제외")
+            continue
+
+        # 파생 ETF/ETN/레버리지/인버스 등 이름 기반 필터
+        if _is_blocked_name(name):
+            print(f"[SCANNER] ⏭️  {name}({ticker}) 파생/레버리지 계열 제외")
+            continue
+
+        # ── 최소 조건 체크 ───────────────────────────
+        # 상승률 0.5% 이상
         if change_rate < 0.5:
             print(f"[SCANNER] ❌ {name} 상승률 {change_rate:.1f}% (0.5% 미만)")
             continue

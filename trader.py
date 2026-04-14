@@ -60,7 +60,7 @@ def buy_market(ticker: str, name: str, reason: str = "모멘텀 진입") -> dict
     qty = target_amount // current_price
 
     if qty == 0:
-        print(f"[TRADER] 매수 수량 0 - 잔고 부족")
+        # 잔고 부족 - 빈번한 이벤트라 로그/알림 생략
         return None
 
     body = {
