@@ -14,6 +14,12 @@ from config import (
     OS_SCAN_TIME_START, OS_SCAN_TIME_END, OS_EOD_CHECK, OS_MAX_POSITIONS,
     SCAN_INTERVAL_SEC, MONITOR_INTERVAL_SEC, SUMMARY_INTERVAL_SEC,
     ACCOUNT_NO, IS_PAPER,
+    DAILY_LOSS_CIRCUIT,
+    DOM_STRATEGY_MODE, OS_STRATEGY_MODE,
+    OS_LEVERAGED_BENCHMARK, OS_LEVERAGED_BULL, OS_LEVERAGED_BEAR,
+    OS_LEVERAGED_SIGNAL_MA, OS_LEVERAGED_AUX_MA,
+    OS_LEVERAGED_ALLOCATIONS,
+    CLENOW_MAX_POSITIONS, CLENOW_EXIT_MA,
 )
 
 KST = pytz.timezone("Asia/Seoul")
@@ -136,7 +142,8 @@ def send_summary(dom_pos, os_pos, trade_count):
 # ═══════════════════════════════════════════════════════
 def main():
     print("=" * 55)
-    print("🚀 KIS 자동매매 봇 v3.0 (섹터 스윙)")
+    print("🚀 KIS 자동매매 봇 v3.2")
+    print(f"국내 전략: {DOM_STRATEGY_MODE} | 해외 전략: {OS_STRATEGY_MODE}")
     print(f"국내 진입: {DOM_SCAN_START}~{DOM_SCAN_END} | EOD체크 {DOM_EOD_CHECK}")
     print(f"해외 진입: {OS_SCAN_TIME_START}~{OS_SCAN_TIME_END} (KST)")
     print(f"현재: {hhmm()} KST")
@@ -165,6 +172,9 @@ def main():
     os_eod_done = False
     sent_closing = False
     trade_count = 0
+    # 서킷 브레이커 상태
+    circuit_tripped = False  # 당일 재진입 중단 플래그
+    day_start_eval = None    # 장 시작 시 총평가 (손실률 계산 기준)
 
     def elapsed(t):
         return 9999 if t is None else (now_kst() - t).seconds
@@ -179,6 +189,22 @@ def main():
             if t_hm == "09:00":
                 dom_eod_done = False
                 sent_closing = False
+                circuit_tripped = False
+                bal0 = get_balance_info()
+                day_start_eval = bal0.get("total_eval", 0) if bal0 else 0
+
+            # 일일 손실 서킷 브레이커
+            if not circuit_tripped and day_start_eval and day_start_eval > 0:
+                bal_now = get_balance_info()
+                if bal_now:
+                    loss_pct = (bal_now["total_eval"] - day_start_eval) / day_start_eval
+                    if loss_pct <= -DAILY_LOSS_CIRCUIT:
+                        circuit_tripped = True
+                        telegram.send_force(
+                            f"🛑 <b>일일 손실 서킷 발동</b>\n"
+                            f"손실 {loss_pct*100:+.2f}% ≤ -{DAILY_LOSS_CIRCUIT*100:.0f}%\n"
+                            "당일 신규 진입 중단"
+                        )
 
             # 보유 포지션 실시간 감시
             if dom_pos and elapsed(last_dom_mon) >= MONITOR_INTERVAL_SEC:
@@ -188,28 +214,39 @@ def main():
                     trade_count += 1
                 last_dom_mon = now
 
-            # 신규 진입 (스캔 시간대)
-            if is_dom_scan_time() and len(dom_pos) < DOM_MAX_POSITIONS:
+            # 신규 진입 (스캔 시간대) — 서킷 발동 시 skip
+            max_pos = (CLENOW_MAX_POSITIONS if DOM_STRATEGY_MODE == "clenow"
+                       else DOM_MAX_POSITIONS)
+            if (is_dom_scan_time() and not circuit_tripped
+                    and len(dom_pos) < max_pos):
                 if elapsed(last_dom_scan) >= SCAN_INTERVAL_SEC:
                     try:
-                        cands = scanner.scan_candidates(
-                            exclude_tickers=list(dom_pos.keys())
-                        )
+                        if DOM_STRATEGY_MODE == "clenow":
+                            import strategy_clenow_kr as clenow
+                            cands = clenow.scan_clenow_candidates(
+                                excluded_tickers=list(dom_pos.keys()),
+                                max_positions=max_pos - len(dom_pos),
+                            )
+                        else:
+                            cands = scanner.scan_candidates(
+                                exclude_tickers=list(dom_pos.keys())
+                            )
                     except Exception as e:
                         print(f"[MAIN] 국내 스캔 오류: {e}")
                         cands = []
                     for c in cands:
-                        if len(dom_pos) >= DOM_MAX_POSITIONS:
+                        if len(dom_pos) >= max_pos:
                             break
                         res = trader.buy_market(
                             c["ticker"], c["name"],
-                            reason=f"[{c.get('sector','')}] {c['reason']}",
+                            reason=c.get("reason", f"[{DOM_STRATEGY_MODE}] 진입"),
+                            expected_price=c.get("close") or c.get("price"),
                         )
                         if res:
-                            res["strategy_type"] = "SWING"
+                            res["strategy_type"] = DOM_STRATEGY_MODE.upper()
                             dom_pos[c["ticker"]] = res
                             monitor.register_position(
-                                c["ticker"], res["buy_price"], "SWING"
+                                c["ticker"], res["buy_price"], DOM_STRATEGY_MODE.upper()
                             )
                             trade_count += 1
                     last_dom_scan = now
@@ -228,44 +265,91 @@ def main():
             if t_hm == "22:30":
                 os_eod_done = False
 
-            # 실시간 감시
-            if os_pos and elapsed(last_os_mon) >= MONITOR_INTERVAL_SEC:
-                closed = monitor_overseas.check_overseas_positions(os_pos)
-                for t in closed:
-                    os_pos.pop(t, None)
-                    trade_count += 1
-                last_os_mon = now
-
-            # 진입 스캔 (22:45 ~ 23:15)
-            if is_os_scan_time() and len(os_pos) < OS_MAX_POSITIONS:
-                if elapsed(last_os_scan) >= SCAN_INTERVAL_SEC:
+            # ─── Leveraged Regime 전략 ─────────────────
+            if OS_STRATEGY_MODE == "leveraged":
+                # 스캔 시간대에 1회만 체제 체크 (중복 실행 방지용 체제 플래그)
+                if is_os_scan_time() and elapsed(last_os_scan) >= SCAN_INTERVAL_SEC:
                     try:
-                        cands = scanner_overseas.scan_overseas_candidates(
-                            exclude_tickers=list(os_pos.keys())
-                        )
-                    except Exception as e:
-                        print(f"[MAIN] 해외 스캔 오류: {e}")
-                        cands = []
-                    for c in cands:
-                        if len(os_pos) >= OS_MAX_POSITIONS:
-                            break
-                        res = trader_overseas.buy_overseas(
-                            c["ticker"], c["name"], c["exchange"],
-                            reason=f"[{c.get('regime','')}] {c['reason']}",
-                        )
-                        if res:
-                            os_pos[c["ticker"]] = res
-                            trade_count += 1
-                    last_os_scan = now
+                        import strategy_leveraged
+                        bal = trader_overseas.get_overseas_balance()
+                        total_account = bal.get("available_usd", 0)
+                        # 현재 보유 ETF 평가액 포함
+                        for pos in os_pos.values():
+                            total_account += pos["qty"] * pos["buy_price"]
 
-            # EOD (05:45 ~ 05:55)
-            if is_os_eod_check() and not os_eod_done and os_pos:
-                print("[MAIN] 해외 EOD 체크")
-                closed = monitor_overseas.check_overseas_eod(os_pos)
-                for t in closed:
-                    os_pos.pop(t, None)
-                    trade_count += 1
-                os_eod_done = True
+                        # 분할 모드 (allocations 2개 이상)
+                        if len(OS_LEVERAGED_ALLOCATIONS) >= 2:
+                            before = len(os_pos)
+                            result = strategy_leveraged.check_and_execute_split(
+                                allocations=OS_LEVERAGED_ALLOCATIONS,
+                                current_positions=os_pos,  # 내부에서 수정됨
+                                total_account_usd=total_account,
+                                signal_ma=OS_LEVERAGED_SIGNAL_MA,
+                                aux_ma=OS_LEVERAGED_AUX_MA,
+                            )
+                            trade_count += len(result.get("switches", []))
+                        else:
+                            # 단일 모드 (레거시)
+                            curr = next(iter(os_pos.values())) if os_pos else None
+                            cfg = {
+                                "benchmark":  OS_LEVERAGED_BENCHMARK,
+                                "bull_ticker": OS_LEVERAGED_BULL,
+                                "bear_ticker": OS_LEVERAGED_BEAR,
+                                "signal_ma":  OS_LEVERAGED_SIGNAL_MA,
+                                "aux_ma":     OS_LEVERAGED_AUX_MA,
+                            }
+                            result = strategy_leveraged.check_and_execute(cfg, curr, total_account)
+                            if result["action"] in ("switch", "buy_success"):
+                                new_pos = result["new_position"]
+                                if new_pos:
+                                    os_pos = {new_pos["ticker"]: new_pos}
+                                    trade_count += 1
+                            elif result["action"] == "sell":
+                                os_pos = {}
+                                trade_count += 1
+                    except Exception as e:
+                        print(f"[MAIN] 해외 레버리지 체제 오류: {e}")
+                    last_os_scan = now
+            # ─── Swing 전략 (기존) ──────────────────────
+            else:
+                # 실시간 감시
+                if os_pos and elapsed(last_os_mon) >= MONITOR_INTERVAL_SEC:
+                    closed = monitor_overseas.check_overseas_positions(os_pos)
+                    for t in closed:
+                        os_pos.pop(t, None)
+                        trade_count += 1
+                    last_os_mon = now
+
+                # 진입 스캔 (22:45 ~ 23:15)
+                if is_os_scan_time() and len(os_pos) < OS_MAX_POSITIONS:
+                    if elapsed(last_os_scan) >= SCAN_INTERVAL_SEC:
+                        try:
+                            cands = scanner_overseas.scan_overseas_candidates(
+                                exclude_tickers=list(os_pos.keys())
+                            )
+                        except Exception as e:
+                            print(f"[MAIN] 해외 스캔 오류: {e}")
+                            cands = []
+                        for c in cands:
+                            if len(os_pos) >= OS_MAX_POSITIONS:
+                                break
+                            res = trader_overseas.buy_overseas(
+                                c["ticker"], c["name"], c["exchange"],
+                                reason=f"[{c.get('regime','')}] {c['reason']}",
+                            )
+                            if res:
+                                os_pos[c["ticker"]] = res
+                                trade_count += 1
+                        last_os_scan = now
+
+                # EOD (05:45 ~ 05:55)
+                if is_os_eod_check() and not os_eod_done and os_pos:
+                    print("[MAIN] 해외 EOD 체크")
+                    closed = monitor_overseas.check_overseas_eod(os_pos)
+                    for t in closed:
+                        os_pos.pop(t, None)
+                        trade_count += 1
+                    os_eod_done = True
 
         # ════ 현황 요약 (1시간 주기) ═══════════════════
         if elapsed(last_summary) >= SUMMARY_INTERVAL_SEC:

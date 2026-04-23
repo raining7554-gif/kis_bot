@@ -165,7 +165,7 @@ def check_os_entry(ticker: str, exchange: str, name: str = "") -> tuple:
         return False, f"MA50({ma50:.1f})≤MA200({ma200:.1f})", metrics
     if today_close <= ma20:
         return False, f"종가≤MA20", metrics
-    if not (50 <= rsi <= 72):
+    if not (50 <= rsi <= 70):
         return False, f"RSI {rsi:.0f} 범위밖", metrics
     if avg_vol20 > 0 and today_vol < avg_vol20 * 1.3:
         return False, f"거래량 부족", metrics

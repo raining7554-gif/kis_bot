@@ -61,9 +61,12 @@ def _hold_days(ticker: str) -> int:
 
 
 def check_positions(positions: dict) -> list:
-    """장중 실시간 체크"""
+    """장중 실시간 체크 — SWING 포지션에 대한 트레일링/하드 손절"""
     closed = []
     for ticker, pos in list(positions.items()):
+        # CLENOW 전략은 일봉 MA50 이탈로만 청산 — 장중 트레일링 스킵
+        if pos.get("strategy_type") == "CLENOW":
+            continue
         current_price = get_current_price(ticker)
         if current_price == 0:
             continue
@@ -83,9 +86,20 @@ def check_eod(positions: dict) -> list:
     """일봉 기준 청산 체크 (장마감 직전 1회)"""
     closed = []
     for ticker, pos in list(positions.items()):
-        _ensure_stop(ticker, pos)
-        hold = _hold_days(ticker)
-        should_exit, reason = check_eod_exit(ticker, pos["buy_price"], hold)
+        # CLENOW: MA50 이탈 시 청산
+        if pos.get("strategy_type") == "CLENOW":
+            try:
+                import strategy_clenow_kr as clenow
+                from config import CLENOW_EXIT_MA
+                should_exit, reason = clenow.should_exit(ticker, CLENOW_EXIT_MA)
+            except Exception as e:
+                print(f"[MONITOR] Clenow 청산 체크 오류 {ticker}: {e}")
+                should_exit, reason = False, ""
+        else:
+            _ensure_stop(ticker, pos)
+            hold = _hold_days(ticker)
+            should_exit, reason = check_eod_exit(ticker, pos["buy_price"], hold)
+
         if should_exit:
             full_reason = f"[EOD] {reason}"
             if trader.sell_market(ticker, pos["name"], pos["qty"], pos["buy_price"], full_reason):

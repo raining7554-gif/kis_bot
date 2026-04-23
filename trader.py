@@ -1,7 +1,7 @@
-"""매매 실행 v3.0 — 스윙 고정 포지션 사이징"""
+"""매매 실행 v3.1 — 스윙 고정 포지션 사이징 + 슬리피지 가드"""
 import kis_auth as api
 import telegram
-from config import ACCOUNT_NO, IS_PAPER, DOM_POSITION_PCT
+from config import ACCOUNT_NO, IS_PAPER, DOM_POSITION_PCT, SLIPPAGE_GUARD_PCT
 
 
 def _acc_parts():
@@ -35,7 +35,8 @@ def get_account_balance() -> dict:
     return {"total_eval": 0, "available_cash": 0}
 
 
-def buy_market(ticker: str, name: str, reason: str = "스윙 진입") -> dict | None:
+def buy_market(ticker: str, name: str, reason: str = "스윙 진입",
+               expected_price: int | None = None) -> dict | None:
     acc_no, acc_prod = _acc_parts()
     tr_id = "VTTC0802U" if IS_PAPER else "TTTC0802U"
 
@@ -48,6 +49,15 @@ def buy_market(ticker: str, name: str, reason: str = "스윙 진입") -> dict | 
     if current_price == 0:
         print(f"[TRADER] 현재가 조회 실패: {ticker}")
         return None
+
+    # 슬리피지 가드: 스캔 시점 대비 SLIPPAGE_GUARD_PCT 초과 급등 시 매수 취소
+    if expected_price and expected_price > 0:
+        drift = (current_price - expected_price) / expected_price
+        if drift > SLIPPAGE_GUARD_PCT:
+            msg = f"슬리피지 {drift*100:+.2f}% — {name}({ticker}) 매수 스킵"
+            print(f"[TRADER] {msg}")
+            telegram.send_error(msg)
+            return None
 
     balance = get_account_balance()
     total = balance["total_eval"]

@@ -57,6 +57,54 @@ OS_PANIC_TRIGGER  = 0.02            # QQQ -2% 이상 급락 시 방어 가동
 # 나스닥은 최대 보유일 제한 없음 — 추세 유효하면 계속 보유
 
 # ─────────────────────────────────────────────────────────
+# 전략 모드 선택 (v3.2 추가)
+# ─────────────────────────────────────────────────────────
+# 국내: "swing" (기존 섹터 스윙) | "clenow" (120일 모멘텀, 튜닝 완료)
+DOM_STRATEGY_MODE = os.environ.get("DOM_STRATEGY_MODE", "swing")
+# 해외: "swing" (기존) | "leveraged" (SOXL/TQQQ 체제 스위치)
+OS_STRATEGY_MODE = os.environ.get("OS_STRATEGY_MODE", "swing")
+
+# ── Clenow 국내 파라미터 ─────────────────────────────
+CLENOW_WINDOW         = 120          # 회귀 일수
+CLENOW_TOP_PCT        = 0.10         # 상위 10%만 진입
+CLENOW_EXIT_MA        = 50           # MA50 이탈 시 청산
+CLENOW_MAX_POSITIONS  = 8            # 최대 8종목 분산
+
+# ── 해외 레버리지 체제 스위치 파라미터 ──────────────
+# 백테스트 결과 (2015-2026, $700 시드):
+#   - 단일 SOXL/Cash:  CAGR +41% / MDD -71%  → $34,432
+#   - 4-way 분산:      CAGR +38% / MDD -44%  → $25,029  ⭐ 채택
+#
+# 4-way: SOXL(3x 반도체) + TQQQ(3x 나스닥) + TECL(3x 기술) + FAS(3x 금융)
+# 각 25% 배분, 벤치 독립 체제 스위치, BEAR 시 해당 슬리브만 현금 도피
+OS_LEVERAGED_SIGNAL_MA = 200
+OS_LEVERAGED_AUX_MA    = 50
+
+# 슬리브 구성 — [{"ticker": ETF, "benchmark": 벤치, "weight": 비중}, ...]
+# 비중 합 = 1.0
+OS_LEVERAGED_ALLOCATIONS = [
+    {"ticker": "SOXL", "benchmark": "QQQ", "weight": 0.25},
+    {"ticker": "TQQQ", "benchmark": "SPY", "weight": 0.25},
+    {"ticker": "TECL", "benchmark": "QQQ", "weight": 0.25},
+    {"ticker": "FAS",  "benchmark": "SPY", "weight": 0.25},
+]
+
+# 레거시 호환 (단일 ETF 모드 쓰려면)
+OS_LEVERAGED_BENCHMARK = "SPY"
+OS_LEVERAGED_BULL      = "TQQQ"
+OS_LEVERAGED_BEAR      = None
+
+# ─────────────────────────────────────────────────────────
+# 리스크 관리 (v3.1 추가)
+# ─────────────────────────────────────────────────────────
+# 시장가 주문 시 현재가 대비 허용 편차 — 이보다 크면 매수 취소
+# 예: 스캔 직후 급등해서 기대가 대비 2% 이상 튀면 포기
+SLIPPAGE_GUARD_PCT = 0.02
+
+# 일일 누적 손실 한도 (총평가 대비) — 초과 시 당일 신규 진입 중단
+DAILY_LOSS_CIRCUIT = 0.05      # -5%
+
+# ─────────────────────────────────────────────────────────
 # 공통 루프 인터벌
 # ─────────────────────────────────────────────────────────
 SCAN_INTERVAL_SEC     = 180         # 스캔 3분에 1회 (스윙이라 급할 것 없음)
