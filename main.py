@@ -158,12 +158,35 @@ def main():
         print(f"[AUTH] 초기 토큰 실패: {e}")
     time.sleep(2)
 
+    # 전략 모드별 메시지 구성
+    if DOM_STRATEGY_MODE == "clenow":
+        dom_max = DOM_SMALL_SEED_POSITIONS if DOM_SMALL_SEED_MODE else CLENOW_MAX_POSITIONS
+        dom_desc = (f"국내: <b>Clenow 모멘텀</b> ({dom_max}포지션, "
+                    f"단가≤₩{DOM_SMALL_SEED_MAX_PRICE:,})"
+                    if DOM_SMALL_SEED_MODE else
+                    f"국내: <b>Clenow 모멘텀</b> ({dom_max}포지션 분산)")
+    else:
+        dom_desc = f"국내: 섹터 스윙 (최대 {DOM_MAX_POSITIONS}포지션)"
+
+    if OS_STRATEGY_MODE == "leveraged":
+        if OS_SMALL_SEED_MODE:
+            etf_list = ", ".join(a["ticker"] for a in OS_SMALL_SEED_ALLOCATIONS)
+            os_desc = f"해외: <b>레버리지 체제</b> ({etf_list} 분산, MA200)"
+        else:
+            etf_list = ", ".join(a["ticker"] for a in OS_LEVERAGED_ALLOCATIONS)
+            os_desc = f"해외: <b>레버리지 4-way</b> ({etf_list}, MA200)"
+    else:
+        os_desc = f"해외: 섹터 스윙 (최대 {OS_MAX_POSITIONS}포지션)"
+
+    paper_label = "📝 모의투자" if IS_PAPER else "💵 실거래"
+
     telegram.send_force(
-        "🚀 <b>KIS 봇 v3.0 시작</b>\n"
-        "전략: 섹터 모멘텀 스윙 (국장+나스닥)\n"
-        f"국내 진입: {DOM_SCAN_START}~{DOM_SCAN_END}\n"
-        f"해외 진입: {OS_SCAN_TIME_START}~{OS_SCAN_TIME_END} KST\n"
-        f"보유: 국장 최대 {DOM_MAX_POSITIONS} / 나스닥 최대 {OS_MAX_POSITIONS}\n"
+        "🚀 <b>KIS 봇 v3.2 시작</b>\n"
+        f"{paper_label}\n"
+        f"{dom_desc}\n"
+        f"{os_desc}\n"
+        f"국내 진입창: {DOM_SCAN_START}~{DOM_SCAN_END}\n"
+        f"해외 진입창: {OS_SCAN_TIME_START}~{OS_SCAN_TIME_END} KST\n"
         f"현재 {hhmm()} KST"
     )
 
