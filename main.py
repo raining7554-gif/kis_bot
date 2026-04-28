@@ -20,8 +20,9 @@ from config import (
     OS_LEVERAGED_SIGNAL_MA, OS_LEVERAGED_AUX_MA,
     OS_LEVERAGED_ALLOCATIONS,
     CLENOW_MAX_POSITIONS, CLENOW_EXIT_MA,
-    DOM_SMALL_SEED_MODE, DOM_SMALL_SEED_MAX_PRICE,
+    DOM_SMALL_SEED_MODE, DOM_SMALL_SEED_MAX_PRICE, DOM_SMALL_SEED_POSITIONS,
     OS_SMALL_SEED_MODE, OS_SMALL_SEED_TICKER, OS_SMALL_SEED_BENCHMARK,
+    OS_SMALL_SEED_ALLOCATIONS,
 )
 
 KST = pytz.timezone("Asia/Seoul")
@@ -218,7 +219,8 @@ def main():
 
             # 신규 진입 (스캔 시간대) — 서킷 발동 시 skip
             if DOM_STRATEGY_MODE == "clenow":
-                max_pos = 1 if DOM_SMALL_SEED_MODE else CLENOW_MAX_POSITIONS
+                max_pos = (DOM_SMALL_SEED_POSITIONS if DOM_SMALL_SEED_MODE
+                           else CLENOW_MAX_POSITIONS)
             else:
                 max_pos = DOM_MAX_POSITIONS
             if (is_dom_scan_time() and not circuit_tripped
@@ -282,29 +284,14 @@ def main():
                         for pos in os_pos.values():
                             total_account += pos["qty"] * pos["buy_price"]
 
-                        # 소액 시드: 단일 ETF 100% 강제
+                        # 소액 시드: OS_SMALL_SEED_TICKERS 파싱 (1~N개)
                         if OS_SMALL_SEED_MODE:
-                            allocations = [{
-                                "ticker": OS_SMALL_SEED_TICKER,
-                                "benchmark": OS_SMALL_SEED_BENCHMARK,
-                                "weight": 1.0,
-                            }]
+                            allocations = OS_SMALL_SEED_ALLOCATIONS
                         else:
                             allocations = OS_LEVERAGED_ALLOCATIONS
 
-                        # 분할 모드 (allocations 2개 이상) 또는 단일
-                        if len(allocations) >= 2:
-                            before = len(os_pos)
-                            result = strategy_leveraged.check_and_execute_split(
-                                allocations=allocations,
-                                current_positions=os_pos,  # 내부에서 수정됨
-                                total_account_usd=total_account,
-                                signal_ma=OS_LEVERAGED_SIGNAL_MA,
-                                aux_ma=OS_LEVERAGED_AUX_MA,
-                            )
-                            trade_count += len(result.get("switches", []))
-                        elif OS_SMALL_SEED_MODE:
-                            # 소액 모드: 단일 슬리브를 split 함수로 처리 (100%)
+                        # 슬리브 1개 이상이면 split 함수로 일괄 처리
+                        if len(allocations) >= 1:
                             result = strategy_leveraged.check_and_execute_split(
                                 allocations=allocations,
                                 current_positions=os_pos,
