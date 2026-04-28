@@ -167,9 +167,11 @@ def scan_clenow_candidates(
     n: int = 120, top_pct: float = 0.10, exit_ma: int = 50,
     max_positions: int = 8,
     excluded_tickers: list[str] = None,
+    max_price: int = None,   # 가격 상한 (소액 시드용)
 ) -> list[dict]:
     """유니버스 전체 스코어링 후 상위 top_pct 종목 반환.
 
+    max_price: 종목 현재가 상한. 소액 시드에서 1주도 못 사는 종목 사전 제외.
     리턴: [{"ticker", "name", "score", "close", "ma50"}, ...] max_positions 개
     """
     if universe is None:
@@ -185,6 +187,7 @@ def scan_clenow_candidates(
 
     # 2) 전 유니버스 스코어링 (KIS API 호출이 많음 — rate limit 주의)
     scored = []
+    skipped_price = 0
     for ticker, name in universe:
         if ticker in excluded_tickers:
             continue
@@ -192,6 +195,10 @@ def scan_clenow_candidates(
         if len(candles) < n:
             continue
         closes = [c["close"] for c in candles]
+        # 가격 상한 필터 (소액 시드)
+        if max_price and closes[0] > max_price:
+            skipped_price += 1
+            continue
         score = clenow_score(closes, n)
         if math.isnan(score):
             continue
@@ -202,6 +209,9 @@ def scan_clenow_candidates(
             "ticker": ticker, "name": name,
             "score": score, "close": closes[0], "ma50": ma50,
         })
+
+    if max_price and skipped_price:
+        print(f"[CLENOW] 가격상한 ₩{max_price:,} 초과 {skipped_price}개 제외")
 
     if not scored:
         print("[CLENOW] 점수 매긴 종목 없음")

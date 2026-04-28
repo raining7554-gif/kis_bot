@@ -70,6 +70,17 @@ CLENOW_TOP_PCT        = 0.10         # 상위 10%만 진입
 CLENOW_EXIT_MA        = 50           # MA50 이탈 시 청산
 CLENOW_MAX_POSITIONS  = 8            # 최대 8종목 분산
 
+# ── 소액 시드 모드 (≤ ₩300k or ≤ $200) ─────────────
+# 시드 작을 때: 8포지션 × 12.5% 배분이 의미 없음 (1주도 못 사는 종목 다수)
+# → 1포지션 풀매수 + 가격 상한 필터
+DOM_SMALL_SEED_MODE      = os.environ.get("DOM_SMALL_SEED_MODE", "false").lower() == "true"
+DOM_SMALL_SEED_MAX_PRICE = int(os.environ.get("DOM_SMALL_SEED_MAX_PRICE", "100000"))
+DOM_SMALL_SEED_POSITION_PCT = 0.95   # 가용현금 95% 한 종목
+
+OS_SMALL_SEED_MODE       = os.environ.get("OS_SMALL_SEED_MODE", "false").lower() == "true"
+OS_SMALL_SEED_TICKER     = os.environ.get("OS_SMALL_SEED_TICKER", "SOXL")     # 가장 저가 ETF
+OS_SMALL_SEED_BENCHMARK  = os.environ.get("OS_SMALL_SEED_BENCHMARK", "QQQ")
+
 # ── 해외 레버리지 체제 스위치 파라미터 ──────────────
 # 백테스트 결과 (2015-2026, $700 시드):
 #   - 단일 SOXL/Cash:  CAGR +41% / MDD -71%  → $34,432

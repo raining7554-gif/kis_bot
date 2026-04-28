@@ -62,11 +62,21 @@ def buy_market(ticker: str, name: str, reason: str = "스윙 진입",
     balance = get_account_balance()
     total = balance["total_eval"]
     available = balance["available_cash"]
-    # 총평가의 45% 또는 가용현금 중 작은 쪽
-    target = min(int(total * DOM_POSITION_PCT), available)
+    # 소액 시드 모드: 가용현금 95%, 일반: 총평가의 12.5% (8분산)
+    try:
+        from config import DOM_SMALL_SEED_MODE, DOM_SMALL_SEED_POSITION_PCT
+        position_pct = DOM_SMALL_SEED_POSITION_PCT if DOM_SMALL_SEED_MODE else DOM_POSITION_PCT
+    except ImportError:
+        position_pct = DOM_POSITION_PCT
+    target = min(int(total * position_pct), available)
     qty = target // current_price
 
     if qty == 0:
+        msg = (f"⚠️ 매수 스킵: {name}({ticker})\n"
+               f"현재가 ₩{current_price:,} > 종목당 예산 ₩{target:,}\n"
+               f"(총평가 ₩{total:,} / 가용 ₩{available:,} / 비중 {position_pct*100:.0f}%)")
+        print(f"[TRADER] {msg}")
+        telegram.send(msg, dedup_sec=3600)
         return None
 
     body = {

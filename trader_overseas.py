@@ -69,7 +69,12 @@ def buy_overseas(ticker: str, name: str, exchange: str,
     qty = calc_overseas_qty(current_price, budget_override=full_allocation_usd)
     if qty == 0:
         budget = full_allocation_usd or OS_POSITION_USD
-        print(f"[OS_TRADER] 수량 0 — 예산(${budget}) < 현재가(${current_price:.2f})")
+        bal = get_overseas_balance()
+        msg = (f"⚠️ 해외 매수 스킵: {name}({ticker})\n"
+               f"현재가 ${current_price:.2f} > 슬리브 예산 ${budget:.2f}\n"
+               f"(가용 ${bal.get('available_usd', 0):.2f})")
+        print(f"[OS_TRADER] {msg}")
+        telegram.send(msg, dedup_sec=3600)
         return None
 
     body = {
