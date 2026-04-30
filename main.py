@@ -252,10 +252,19 @@ def main():
                     try:
                         if DOM_STRATEGY_MODE == "clenow":
                             import strategy_clenow_kr as clenow
+                            # 자동 가격상한: 시드 작으면 (총자본 95% / 포지션수) 까지 = 1주 보장
+                            if DOM_SMALL_SEED_MODE:
+                                bal_chk = get_balance_info()
+                                total_eval = bal_chk.get("total_eval", 0) if bal_chk else 0
+                                # 총자본 / 포지션수 (95% 비중) — env 의 MAX_PRICE 와 비교해 큰 쪽
+                                auto_cap = int(total_eval * 0.95 / max(max_pos, 1))
+                                price_ceiling = max(auto_cap, DOM_SMALL_SEED_MAX_PRICE)
+                            else:
+                                price_ceiling = None
                             cands = clenow.scan_clenow_candidates(
                                 excluded_tickers=list(dom_pos.keys()),
                                 max_positions=max_pos - len(dom_pos),
-                                max_price=DOM_SMALL_SEED_MAX_PRICE if DOM_SMALL_SEED_MODE else None,
+                                max_price=price_ceiling,
                             )
                         else:
                             cands = scanner.scan_candidates(
