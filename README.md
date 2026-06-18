@@ -1,1 +1,54 @@
 # kis_bot
+
+KIS Open API 기반 봇 모음.
+
+## 1. 자동매매 봇 — `main.py`
+Clenow 모멘텀(국내) + 레버리지 체제(해외) 자동매매. (기존 v3.x)
+
+```
+python main.py
+```
+
+## 2. 토스 매매 어드바이저 봇 — `advisor.py`
+**자동매매 아님.** 토스증권으로 직접 매매하는 단타/스윙 종목에 대해
+**진입가·손절가·목표가**를 계산해 정해진 시각에 텔레그램 요약 리포트로 보냄.
+
+```
+python advisor.py
+```
+
+### 동작
+- **종목 풀** = 관심종목(직접 등록) + 자동발굴
+  - 단타 자동발굴: 거래대금 상위 종목
+  - 스윙 자동발굴: Clenow 모멘텀 상위 종목
+- **단타 분석**: 당일 VWAP(=누적거래대금/거래량)·당일 지지/저항·분봉 RSI
+- **스윙 분석**: 일봉 MA5/20/60 정배열·눌림목(MA20 지지)·ATR
+- **리포트**: `ADVISOR_REPORT_TIMES` 시각마다 텔레그램 전송 (시작 직후 1회 즉시 발송)
+
+각 종목마다 신호(🟢매수후보/🟡관망/🔴회피)·점수·진입구간·손절·목표·손익비(R/R)·코멘트를 제공.
+
+### 환경변수
+공통(자동매매봇과 동일): `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_ACCOUNT_NO`,
+`KIS_PAPER`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`
+
+어드바이저 전용 (없으면 기본값, `advisor_config.py` 참조):
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `ADVISOR_WATCHLIST` | (없음) | 관심종목 티커 CSV. 예 `005930,000660,042700` |
+| `ADVISOR_REPORT_TIMES` | `08:50,12:20,15:40` | 리포트 전송 시각(KST) CSV |
+| `ADVISOR_AUTO_DISCOVER` | `true` | 자동발굴 on/off |
+| `ADVISOR_DAYTRADE_TOPN` | `5` | 단타 자동발굴 개수 |
+| `ADVISOR_SWING_TOPN` | `5` | 스윙 자동발굴 개수 |
+| `DT_STOP_PCT` / `DT_RR` | `0.02` / `2.0` | 단타 손절폭 / 손익비 |
+| `SW_STOP_PCT` / `SW_RR` | `0.05` / `2.0` | 스윙 손절폭 / 손익비 |
+
+> 모의계좌(`KIS_PAPER=true`)에선 거래대금 순위 API가 제한될 수 있어
+> 단타 자동발굴이 비는 경우가 있음. 관심종목 단타 분석은 정상 동작.
+
+### Railway 배포
+자동매매봇과 **별도 서비스**로 띄우면 됨 (같은 env 공유).
+`railway.toml` 의 `startCommand` 를 `python advisor.py` 로 둔 두 번째 서비스 추가.
+
+> ⚠️ 모든 추천은 참고용이며 수익을 보장하지 않음. 진입가·손절 원칙을 지키고
+> 분할매수를 권장.
