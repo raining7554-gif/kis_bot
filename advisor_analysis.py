@@ -92,8 +92,8 @@ def _round_price(price: float, market: str = "KR"):
 # 스윙 분석 (일봉 기반)
 # ═══════════════════════════════════════════════════════
 def analyze_swing(ticker: str, name: str, candles: list,
-                  stop_pct: float = 0.05, rr: float = 2.0,
-                  market: str = "KR") -> dict | None:
+                  stop_pct: float = 0.08, rr: float = 1.5,
+                  market: str = "KR", min_buy_score: int = 65) -> dict | None:
     """일봉 MA/ATR 기반 스윙 진입가 추천.
 
     candles: strategy.get_daily_candles 결과 (최신순, 최소 60개 권장)
@@ -175,6 +175,11 @@ def analyze_swing(ticker: str, name: str, candles: list,
         signal = "관망"
         comment = (f"정배열 양호하나 지지선 위로 이격 — "
                    f"MA20({_cf(ma20)})까지 눌림 시 분할매수")
+    elif score < min_buy_score:
+        # 백테스트: 점수 65 미만 매수후보는 기대수익 (-) → 관망으로 강등
+        signal = "관망"
+        comment = (f"조건 일부만 충족({score}점<{min_buy_score}) — "
+                   f"RSI {rsi:.0f} / 거래량 {vol_ratio:.1f}배, 더 강해지면 진입")
     else:
         signal = "매수후보"
         loc = "지지선 부근" if price <= entry_high * 1.02 else "지지선 근접"

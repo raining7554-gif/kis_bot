@@ -110,8 +110,8 @@ def run_swing(tickers: list[tuple]) -> list[dict]:
     results = []
     for ticker, name in tickers:
         candles = get_daily_candles(ticker, "J", count=70)
-        rec = analysis.analyze_swing(ticker, name, candles,
-                                     stop_pct=SW_STOP_PCT, rr=SW_RR)
+        rec = analysis.analyze_swing(ticker, name, candles, stop_pct=SW_STOP_PCT,
+                                     rr=SW_RR, min_buy_score=SW_MIN_SCORE)
         if rec:
             results.append(rec)
         time.sleep(ADVISOR_API_DELAY)
@@ -273,7 +273,8 @@ def _single_report(code: str, name: str, styles: set) -> str:
 
     if "스윙" in styles:
         candles = get_daily_candles(code, "J", count=70)
-        sw = analysis.analyze_swing(code, name, candles, stop_pct=SW_STOP_PCT, rr=SW_RR)
+        sw = analysis.analyze_swing(code, name, candles, stop_pct=SW_STOP_PCT,
+                                    rr=SW_RR, min_buy_score=SW_MIN_SCORE)
         if sw:
             lines.append(_style_block(sw))
         else:
@@ -322,8 +323,8 @@ def _single_report_us(ticker: str, styles: set) -> str:
             lines.append("\n⚡ <b>단타</b> — 일봉 데이터 부족으로 분석 불가")
 
     if "스윙" in styles:
-        sw = analysis.analyze_swing(ticker, name, candles,
-                                    stop_pct=SW_STOP_PCT, rr=SW_RR, market="US")
+        sw = analysis.analyze_swing(ticker, name, candles, stop_pct=SW_STOP_PCT,
+                                    rr=SW_RR, market="US", min_buy_score=SW_MIN_SCORE)
         if sw:
             lines.append(_style_block(sw))
         else:
