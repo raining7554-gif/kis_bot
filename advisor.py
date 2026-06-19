@@ -228,14 +228,27 @@ HELP_TEXT = (
 )
 
 
+# KIS 종목상태(iscd_stat_cls_code) 중 '주의가 필요한' 코드만 경고.
+# 55(신용가능)·57(증거금100%)·00(그외) 등은 정상이므로 경고 안 함.
+_STAT_WARN = {
+    "51": "관리종목", "52": "투자위험", "53": "투자경고",
+    "54": "투자주의", "58": "거래정지", "59": "단기과열",
+}
+
+
 def _single_report(code: str, name: str, styles: set) -> str:
     """단일 종목 분석 결과를 텔레그램 메시지로."""
     quote = data.get_quote(code)
     if not quote or quote.get("price", 0) <= 0:
         return f"⚠️ {name or code} 시세를 가져오지 못했어요. 코드가 맞는지 확인해 주세요."
-    name = quote.get("name") or name or code
-    if quote.get("stat") not in ("00", "", None):
-        head = f"⚠️ <b>{name}</b>({code}) — 거래정지/관리종목 상태일 수 있어요.\n"
+    # 찾아둔 한글명을 우선 사용 (KIS 응답명이 비면 코드로 떨어지므로)
+    q_name = quote.get("name", "")
+    if q_name == code:  # get_quote가 이름을 못 받아 코드로 폴백한 경우
+        q_name = ""
+    name = name or q_name or code
+    warn = _STAT_WARN.get(str(quote.get("stat", "00")))
+    if warn:
+        head = f"⚠️ <b>{name}</b>({code}) — {warn} 상태예요. 주의하세요.\n"
     else:
         head = ""
 
