@@ -148,18 +148,18 @@ def analyze_swing(ticker: str, name: str, candles: list,
     entry_low = R(min(support, upper))
     entry_high = R(max(support, upper))
 
-    # ── 손절: 지지선 하단(버퍼) 또는 20일 저점 중 가까운 쪽 ──
-    stop_raw = min(support * (1 - stop_pct), lo20)
-    # 손절이 너무 멀면 ATR 기준으로 제한 (진입가 - 2*ATR)
-    if atr > 0:
-        stop_raw = max(stop_raw, entry_low - 2 * atr)
-    stop = R(stop_raw)
+    # ── 손절(하드, 재난방어): 지지선 -stop_pct 와 20일 저점 중 더 낮은(넓은) 쪽 ──
+    # 백테스트 결과: 타이트한 손절은 상승 종목을 조기 청산 → 넓게 잡는다.
+    stop = R(min(entry_low * (1 - stop_pct), lo20))
 
-    # ── 목표: 진입가 + 위험폭 × RR (전고 hi20 참고) ──────
+    # ── 추세추종 청산 ───────────────────────────────────
+    # 1차 청산은 '일봉 종가 MA20 이탈'(추세 유효성), 전고는 추세목표(참고).
     entry_mid = (entry_low + entry_high) / 2
     min_risk = 0.01 if market == "US" else 1
     risk = max(entry_mid - stop, min_risk)
-    target = R(max(entry_mid + risk * rr, hi20))
+    exit_ma = R(ma20)                       # 추세 청산 기준선
+    ref_target = R(hi20)                    # 전고(추세목표 참고)
+    target = R(max(entry_mid + risk * rr, hi20))  # 백테스트 호환용 참고 목표
     rr_val = (target - entry_mid) / risk if risk > 0 else 0
 
     # ── 신호 판정 + 코멘트 ─────────────────────────────
@@ -184,14 +184,15 @@ def analyze_swing(ticker: str, name: str, candles: list,
         signal = "매수후보"
         loc = "지지선 부근" if price <= entry_high * 1.02 else "지지선 근접"
         comment = (f"정배열 {('+단기상승 ' if short_up else '')}/ {loc} / "
-                   f"RSI {rsi:.0f} / 거래량 {vol_ratio:.1f}배")
+                   f"RSI {rsi:.0f} / 거래량 {vol_ratio:.1f}배 / 추세 유효 시 보유")
 
     return {
         "style": "스윙", "market": market,
         "ticker": ticker, "name": name, "price": R(price),
         "signal": signal, "score": int(score),
         "entry_low": entry_low, "entry_high": entry_high,
-        "stop": stop, "target": target, "rr": round(rr_val, 1),
+        "stop": stop, "exit_ma": exit_ma, "ref_target": ref_target,
+        "target": target, "rr": round(rr_val, 1),
         "ma20": R(ma20), "rsi": round(rsi),
         "comment": comment,
     }

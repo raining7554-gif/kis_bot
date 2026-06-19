@@ -152,17 +152,25 @@ def _px(v, market: str = "KR") -> str:
     return f"{int(round(v)):,}"
 
 
+def _levels(r: dict) -> str:
+    """진입/손절/청산 라인 — 스윙은 추세추종(MA20 이탈) 청산, 단타는 고정 목표."""
+    m = r.get("market", "KR")
+    if r.get("style") == "스윙":
+        s = (f"  진입 {_px(r['entry_low'], m)}~{_px(r['entry_high'], m)} · "
+             f"손절 {_px(r['stop'], m)}\n"
+             f"  청산: 일봉 종가가 MA20({_px(r['exit_ma'], m)}) 이탈 시")
+        if r.get("ref_target"):
+            s += f" · 추세목표(참고) {_px(r['ref_target'], m)}"
+        return s
+    return (f"  진입 {_px(r['entry_low'], m)}~{_px(r['entry_high'], m)} · "
+            f"손절 {_px(r['stop'], m)} · 목표 {_px(r['target'], m)} (R/R {r['rr']})")
+
+
 def _fmt_rec(r: dict, min_score: int) -> str:
     em = _SIGNAL_EMOJI.get(r["signal"], "⚪")
     m = r.get("market", "KR")
-    # 관망/회피여도 정보는 주되, 매수후보는 진입가 강조
     head = f"{em} <b>{r['name']}</b>({r['ticker']}) · {r['signal']} ({r['score']}점)"
-    body = (
-        f"\n  현재가 {_px(r['price'], m)}\n"
-        f"  진입 {_px(r['entry_low'], m)}~{_px(r['entry_high'], m)} · "
-        f"손절 {_px(r['stop'], m)} · 목표 {_px(r['target'], m)} (R/R {r['rr']})\n"
-        f"  ↳ {r['comment']}"
-    )
+    body = f"\n  현재가 {_px(r['price'], m)}\n{_levels(r)}\n  ↳ {r['comment']}"
     return head + body
 
 
@@ -287,13 +295,10 @@ def _single_report(code: str, name: str, styles: set) -> str:
 def _style_block(rec: dict) -> str:
     """단타/스윙 한 종목 분석 블록 (국내·미국 공용)."""
     em = _SIGNAL_EMOJI.get(rec["signal"], "⚪")
-    m = rec.get("market", "KR")
     icon = "⚡ <b>단타</b>" if rec["style"] == "단타" else "📈 <b>스윙</b>"
     return (
         f"\n{icon} {em} {rec['signal']} ({rec['score']}점)\n"
-        f"  진입 {_px(rec['entry_low'], m)}~{_px(rec['entry_high'], m)} · "
-        f"손절 {_px(rec['stop'], m)} · 목표 {_px(rec['target'], m)} (R/R {rec['rr']})\n"
-        f"  ↳ {rec['comment']}"
+        f"{_levels(rec)}\n  ↳ {rec['comment']}"
     )
 
 
