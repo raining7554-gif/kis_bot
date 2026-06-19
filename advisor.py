@@ -332,6 +332,7 @@ def _single_report_us(ticker: str, styles: set) -> str:
                                     rr=SW_RR, market="US", min_buy_score=SW_MIN_SCORE)
         if sw:
             lines.append(_style_block(sw))
+            lines.append("  · ⚠️ 미국 스윙 점수는 백테스트 미검증 — 참고용")
         else:
             lines.append("\n📈 <b>스윙</b> — 일봉 데이터 부족으로 분석 불가")
 
