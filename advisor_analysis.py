@@ -79,11 +79,21 @@ def _round_tick(price: float) -> int:
     return int(round(price / tick) * tick)
 
 
+def _round_price(price: float, market: str = "KR"):
+    """시장별 가격 반올림 — 국내는 호가단위(정수), 미국은 센트(소수 2자리)."""
+    if price <= 0:
+        return 0
+    if market == "US":
+        return round(price, 2)
+    return _round_tick(price)
+
+
 # ═══════════════════════════════════════════════════════
 # 스윙 분석 (일봉 기반)
 # ═══════════════════════════════════════════════════════
 def analyze_swing(ticker: str, name: str, candles: list,
-                  stop_pct: float = 0.05, rr: float = 2.0) -> dict | None:
+                  stop_pct: float = 0.05, rr: float = 2.0,
+                  market: str = "KR") -> dict | None:
     """일봉 MA/ATR 기반 스윙 진입가 추천.
 
     candles: strategy.get_daily_candles 결과 (최신순, 최소 60개 권장)
@@ -134,33 +144,37 @@ def analyze_swing(ticker: str, name: str, candles: list,
     # 지지선 = MA20, 윗단 = MA5(또는 현재가가 지지 근처면 현재가)
     support = ma20 if ma20 > 0 else lo20
     upper = max(ma5, support * 1.005)
-    entry_low = _round_tick(min(support, upper))
-    entry_high = _round_tick(max(support, upper))
+    R = lambda x: _round_price(x, market)
+    entry_low = R(min(support, upper))
+    entry_high = R(max(support, upper))
 
     # ── 손절: 지지선 하단(버퍼) 또는 20일 저점 중 가까운 쪽 ──
     stop_raw = min(support * (1 - stop_pct), lo20)
     # 손절이 너무 멀면 ATR 기준으로 제한 (진입가 - 2*ATR)
     if atr > 0:
         stop_raw = max(stop_raw, entry_low - 2 * atr)
-    stop = _round_tick(stop_raw)
+    stop = R(stop_raw)
 
     # ── 목표: 진입가 + 위험폭 × RR (전고 hi20 참고) ──────
     entry_mid = (entry_low + entry_high) / 2
-    risk = max(entry_mid - stop, 1)
-    target = _round_tick(max(entry_mid + risk * rr, hi20))
+    min_risk = 0.01 if market == "US" else 1
+    risk = max(entry_mid - stop, min_risk)
+    target = R(max(entry_mid + risk * rr, hi20))
     rr_val = (target - entry_mid) / risk if risk > 0 else 0
 
     # ── 신호 판정 + 코멘트 ─────────────────────────────
+    def _cf(x):  # 코멘트용 가격 표기 (콤마/달러)
+        return f"${x:,.2f}" if market == "US" else f"{int(round(x)):,}"
     if not long_up:
         signal = "회피"
         comment = f"장기 하락(MA20<MA60) — 추세전환 전 관망. RSI {rsi:.0f}"
     elif rsi > 78:
         signal = "관망"
-        comment = f"과열(RSI {rsi:.0f}) — 눌림 후 MA5({_round_tick(ma5):,}) 부근 재진입 대기"
+        comment = f"과열(RSI {rsi:.0f}) — 눌림 후 MA5({_cf(ma5)}) 부근 재진입 대기"
     elif price > entry_high * 1.05:
         signal = "관망"
         comment = (f"정배열 양호하나 지지선 위로 이격 — "
-                   f"MA20({_round_tick(ma20):,})까지 눌림 시 분할매수")
+                   f"MA20({_cf(ma20)})까지 눌림 시 분할매수")
     else:
         signal = "매수후보"
         loc = "지지선 부근" if price <= entry_high * 1.02 else "지지선 근접"
@@ -168,12 +182,12 @@ def analyze_swing(ticker: str, name: str, candles: list,
                    f"RSI {rsi:.0f} / 거래량 {vol_ratio:.1f}배")
 
     return {
-        "style": "스윙",
-        "ticker": ticker, "name": name, "price": int(price),
+        "style": "스윙", "market": market,
+        "ticker": ticker, "name": name, "price": R(price),
         "signal": signal, "score": int(score),
         "entry_low": entry_low, "entry_high": entry_high,
         "stop": stop, "target": target, "rr": round(rr_val, 1),
-        "ma20": _round_tick(ma20), "rsi": round(rsi),
+        "ma20": R(ma20), "rsi": round(rsi),
         "comment": comment,
     }
 
@@ -261,11 +275,93 @@ def analyze_daytrade(quote: dict, minute_candles: list | None = None,
                    f"분봉RSI {m_rsi:.0f} / 고저위치 {pos_in_range*100:.0f}%")
 
     return {
-        "style": "단타",
+        "style": "단타", "market": "KR",
         "ticker": quote["ticker"], "name": quote["name"], "price": int(price),
         "signal": signal, "score": int(score),
         "entry_low": entry_low, "entry_high": entry_high,
         "stop": stop, "target": target, "rr": round(rr_val, 1),
         "vwap": vwap_i, "rsi": round(m_rsi), "change": round(change, 1),
+        "comment": comment,
+    }
+
+
+# ═══════════════════════════════════════════════════════
+# 미국주식 단타 분석 (피벗 포인트 기반)
+# ═══════════════════════════════════════════════════════
+# 미장은 KIS 해외 시세에 당일 VWAP/분봉 누적이 깔끔히 안 와서,
+# 전일 고저종으로 만든 '피벗 포인트'(데이트레이더 표준)로 진입가를 잡는다.
+def analyze_daytrade_us(ticker: str, name: str, price: float, change: float,
+                        candles: list, rr: float = 2.0) -> dict | None:
+    """미국주식 단타 — 전일 피벗 포인트 기반.
+
+    candles: 해외 일봉(최신순). 전일(직전 완성봉) 고저종으로 피벗 산출.
+    price: 현재가, change: 당일 등락률(%)
+    """
+    if price <= 0 or len(candles) < 2:
+        return None
+
+    R = lambda x: _round_price(x, "US")
+    # candles[0] 이 당일(진행중)일 수 있으니 직전봉을 전일로 사용
+    prev = candles[1] if len(candles) >= 2 else candles[0]
+    H, L, C = prev["high"], prev["low"], prev["close"]
+    if H <= 0 or L <= 0:
+        return None
+
+    pivot = (H + L + C) / 3
+    r1 = 2 * pivot - L
+    s1 = 2 * pivot - H
+    s2 = pivot - (H - L)
+
+    above_pivot = price >= pivot
+
+    # 점수: 피벗 위 + 상승 + R1 미도달(여유)
+    score = 0
+    if above_pivot:
+        score += 35
+    if change > 0:
+        score += 20
+    if price < r1:
+        score += 20      # 아직 1차 저항 전 (추격 아님)
+    if change > 3:
+        score += 10
+    score = max(0, min(100, score))
+
+    if above_pivot:
+        # 피벗(지지) 눌림 매수
+        entry_low = R(pivot)
+        entry_high = R(max(pivot * 1.003, min(price, pivot * 1.01)))
+        stop = R(s1)
+        entry_mid = (entry_low + entry_high) / 2
+        risk = max(entry_mid - stop, 0.01)
+        target = R(max(entry_mid + risk * rr, r1))
+        rr_val = (target - entry_mid) / risk
+        if price > r1:
+            signal = "관망"
+            comment = (f"1차저항 R1(${R(r1)}) 돌파 — 추격 자제, "
+                       f"피벗(${R(pivot)}) 눌림 대기")
+        else:
+            signal = "매수후보"
+            comment = (f"피벗(${R(pivot)}) 위 강세 / 당일 {change:+.1f}% / "
+                       f"저항 R1 ${R(r1)} · 지지 S1 ${R(s1)}")
+    else:
+        # 피벗 아래 = 약세
+        entry_low = R(s1)
+        entry_high = R(pivot)
+        stop = R(s2)
+        entry_mid = (entry_low + entry_high) / 2
+        risk = max(entry_mid - stop, 0.01)
+        target = R(pivot)
+        rr_val = (target - entry_mid) / risk
+        signal = "관망"
+        comment = (f"피벗(${R(pivot)}) 아래 약세 — S1(${R(s1)}) 지지 확인 "
+                   f"또는 피벗 회복 후 진입")
+
+    return {
+        "style": "단타", "market": "US",
+        "ticker": ticker, "name": name, "price": R(price),
+        "signal": signal, "score": int(score),
+        "entry_low": entry_low, "entry_high": entry_high,
+        "stop": stop, "target": target, "rr": round(rr_val, 1),
+        "pivot": R(pivot), "change": round(change, 1),
         "comment": comment,
     }

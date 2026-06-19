@@ -131,6 +131,41 @@ def get_volume_rank(topn: int = 30, min_price: int = 1000, max_price: int = 2000
         return []
 
 
+# ─────────────────────────────────────────────────────────
+# 해외(미국주식) — KIS 해외 API 재활용
+# ─────────────────────────────────────────────────────────
+US_EXCHANGES = ["NAS", "NYS", "AMS"]  # 나스닥 / 뉴욕 / 아멕스
+
+
+def get_us_quote(ticker: str) -> dict:
+    """미국주식 현재가. 거래소를 NAS→NYS→AMS 순으로 자동 탐색.
+
+    리턴: {ticker, exchange, price, change_rate, volume}
+    """
+    try:
+        import strategy_overseas as osd
+    except Exception as e:
+        print(f"[ADVISOR_DATA] 해외 모듈 로드 오류: {e}")
+        return {}
+    for exc in US_EXCHANGES:
+        info = osd.get_overseas_current(ticker, exc)
+        if info and info.get("price", 0) > 0:
+            info["exchange"] = exc
+            info["ticker"] = ticker
+            return info
+    return {}
+
+
+def get_us_daily(ticker: str, exchange: str, count: int = 210) -> list:
+    """미국주식 일봉(최신순). strategy_overseas 재활용."""
+    try:
+        import strategy_overseas as osd
+        return osd.get_overseas_daily(ticker, exchange, count)
+    except Exception as e:
+        print(f"[ADVISOR_DATA] {ticker} 해외 일봉 오류: {e}")
+        return []
+
+
 def _f(v) -> float:
     try:
         return float(str(v).replace(",", "").strip() or 0)

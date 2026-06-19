@@ -145,14 +145,22 @@ def run_daytrade(tickers: list[tuple]) -> list[dict]:
 _SIGNAL_EMOJI = {"매수후보": "🟢", "관망": "🟡", "회피": "🔴"}
 
 
+def _px(v, market: str = "KR") -> str:
+    """시장별 가격 표기 — 국내 '12,300', 미국 '$182.45'."""
+    if market == "US":
+        return f"${v:,.2f}"
+    return f"{int(round(v)):,}"
+
+
 def _fmt_rec(r: dict, min_score: int) -> str:
     em = _SIGNAL_EMOJI.get(r["signal"], "⚪")
+    m = r.get("market", "KR")
     # 관망/회피여도 정보는 주되, 매수후보는 진입가 강조
     head = f"{em} <b>{r['name']}</b>({r['ticker']}) · {r['signal']} ({r['score']}점)"
     body = (
-        f"\n  현재가 {r['price']:,}\n"
-        f"  진입 {r['entry_low']:,}~{r['entry_high']:,} · "
-        f"손절 {r['stop']:,} · 목표 {r['target']:,} (R/R {r['rr']})\n"
+        f"\n  현재가 {_px(r['price'], m)}\n"
+        f"  진입 {_px(r['entry_low'], m)}~{_px(r['entry_high'], m)} · "
+        f"손절 {_px(r['stop'], m)} · 목표 {_px(r['target'], m)} (R/R {r['rr']})\n"
         f"  ↳ {r['comment']}"
     )
     return head + body
@@ -219,12 +227,11 @@ def generate_and_send():
 # ═══════════════════════════════════════════════════════
 HELP_TEXT = (
     "📒 <b>매매 어드바이저 — 사용법</b>\n"
-    "종목명이나 6자리 코드를 그냥 보내면 진입가를 분석해 드려요.\n\n"
-    "예) <code>삼성전자</code> · <code>에코프로</code> · <code>000660</code>\n"
-    "단타만: <code>삼성전자 단타</code>\n"
-    "스윙만: <code>에코프로 스윙</code>\n"
-    "정시 리포트: <code>리포트</code> 또는 <code>report</code>\n"
-    "도움말: <code>도움말</code>"
+    "종목명·코드·미국티커를 보내면 진입가를 분석해 드려요.\n\n"
+    "🇰🇷 국내: <code>삼성전자</code> · <code>에코프로</code> · <code>000660</code>\n"
+    "🇺🇸 미국: <code>엔비디아</code> · <code>NVDA</code> · <code>TSLA</code>\n"
+    "단타만: <code>삼성전자 단타</code> / 스윙만: <code>NVDA 스윙</code>\n"
+    "정시 리포트: <code>리포트</code> · 도움말: <code>도움말</code>"
 )
 
 
@@ -252,7 +259,7 @@ def _single_report(code: str, name: str, styles: set) -> str:
     else:
         head = ""
 
-    lines = [f"📊 <b>{name}</b>({code}) · 현재가 {int(quote['price']):,} "
+    lines = [f"📊 <b>{name}</b>({code}) · 현재가 {_px(quote['price'], 'KR')} "
              f"({quote.get('change_rate',0):+.1f}%)"]
 
     if "단타" in styles:
@@ -260,13 +267,7 @@ def _single_report(code: str, name: str, styles: set) -> str:
         minutes = data.get_minute_candles(code, base_time=base)
         dt = analysis.analyze_daytrade(quote, minutes, stop_pct=DT_STOP_PCT, rr=DT_RR)
         if dt:
-            em = _SIGNAL_EMOJI.get(dt["signal"], "⚪")
-            lines.append(
-                f"\n⚡ <b>단타</b> {em} {dt['signal']} ({dt['score']}점)\n"
-                f"  진입 {dt['entry_low']:,}~{dt['entry_high']:,} · "
-                f"손절 {dt['stop']:,} · 목표 {dt['target']:,} (R/R {dt['rr']})\n"
-                f"  ↳ {dt['comment']}"
-            )
+            lines.append(_style_block(dt))
             if not is_market_hours():
                 lines.append("  · (장중 기준 신호 — 지금은 참고용)")
 
@@ -274,18 +275,62 @@ def _single_report(code: str, name: str, styles: set) -> str:
         candles = get_daily_candles(code, "J", count=70)
         sw = analysis.analyze_swing(code, name, candles, stop_pct=SW_STOP_PCT, rr=SW_RR)
         if sw:
-            em = _SIGNAL_EMOJI.get(sw["signal"], "⚪")
-            lines.append(
-                f"\n📈 <b>스윙</b> {em} {sw['signal']} ({sw['score']}점)\n"
-                f"  진입 {sw['entry_low']:,}~{sw['entry_high']:,} · "
-                f"손절 {sw['stop']:,} · 목표 {sw['target']:,} (R/R {sw['rr']})\n"
-                f"  ↳ {sw['comment']}"
-            )
+            lines.append(_style_block(sw))
         else:
             lines.append("\n📈 <b>스윙</b> — 일봉 데이터 부족으로 분석 불가")
 
     lines.append("\n※ 추천이며 보장 아님. 손절 지키고 분할매수 권장.")
     return head + "\n".join(lines)
+
+
+def _style_block(rec: dict) -> str:
+    """단타/스윙 한 종목 분석 블록 (국내·미국 공용)."""
+    em = _SIGNAL_EMOJI.get(rec["signal"], "⚪")
+    m = rec.get("market", "KR")
+    icon = "⚡ <b>단타</b>" if rec["style"] == "단타" else "📈 <b>스윙</b>"
+    return (
+        f"\n{icon} {em} {rec['signal']} ({rec['score']}점)\n"
+        f"  진입 {_px(rec['entry_low'], m)}~{_px(rec['entry_high'], m)} · "
+        f"손절 {_px(rec['stop'], m)} · 목표 {_px(rec['target'], m)} (R/R {rec['rr']})\n"
+        f"  ↳ {rec['comment']}"
+    )
+
+
+def _single_report_us(ticker: str, styles: set) -> str:
+    """미국주식 단일 종목 분석 (달러)."""
+    quote = data.get_us_quote(ticker)
+    if not quote or quote.get("price", 0) <= 0:
+        return (f"⚠️ {ticker} 미국주식 시세를 못 가져왔어요.\n"
+                "티커 철자를 확인하거나(예: NVDA, TSLA), 잠시 후 다시 시도해 주세요.\n"
+                "※ 미국장 시세는 KIS 해외 권한/시간대에 따라 지연될 수 있어요.")
+    exchange = quote.get("exchange", "NAS")
+    price = quote["price"]
+    change = quote.get("change_rate", 0)
+    name = stock_lookup.us_name_of(ticker)
+    title = f"{name}({ticker})" if name else ticker
+
+    lines = [f"📊 <b>🇺🇸 {title}</b> · {exchange} · 현재가 ${price:,.2f} ({change:+.1f}%)"]
+
+    candles = data.get_us_daily(ticker, exchange, count=210)
+
+    if "단타" in styles:
+        dt = analysis.analyze_daytrade_us(ticker, name, price, change, candles, rr=DT_RR)
+        if dt:
+            lines.append(_style_block(dt))
+            lines.append("  · 미장 단타는 전일 피벗 기준 (장중 갱신 참고)")
+        else:
+            lines.append("\n⚡ <b>단타</b> — 일봉 데이터 부족으로 분석 불가")
+
+    if "스윙" in styles:
+        sw = analysis.analyze_swing(ticker, name, candles,
+                                    stop_pct=SW_STOP_PCT, rr=SW_RR, market="US")
+        if sw:
+            lines.append(_style_block(sw))
+        else:
+            lines.append("\n📈 <b>스윙</b> — 일봉 데이터 부족으로 분석 불가")
+
+    lines.append("\n※ 추천이며 보장 아님. 손절 지키고 분할매수 권장.")
+    return "\n".join(lines)
 
 
 def handle_query(text: str) -> str:
@@ -311,6 +356,11 @@ def handle_query(text: str) -> str:
     query = t.strip()
     if not query:
         return HELP_TEXT
+
+    # 미국주식 우선 판별 (영문 티커 / 인기 한글명)
+    us = stock_lookup.resolve_us(query)
+    if us:
+        return _single_report_us(us, styles)
 
     cands = stock_lookup.resolve(query)
     if not cands:
