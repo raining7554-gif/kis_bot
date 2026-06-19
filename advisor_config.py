@@ -64,5 +64,8 @@ ADVISOR_LOOP_SEC = int(os.environ.get("ADVISOR_LOOP_SEC", "20"))
 ADVISOR_POLL_SEC = int(os.environ.get("ADVISOR_POLL_SEC", "3"))
 # 대화형 질의응답 on/off (끄면 정시 리포트만)
 ADVISOR_INTERACTIVE = os.environ.get("ADVISOR_INTERACTIVE", "true").lower() == "true"
+
+# 모멘텀 랭킹(크로스섹셔널) — 백테스트로 검증된 전략. 상위 N종목 추천.
+ADVISOR_MOMENTUM_TOPN = int(os.environ.get("ADVISOR_MOMENTUM_TOPN", "15"))
 # 자동발굴 스캔이 KIS rate-limit 에 걸리지 않도록 호출 간 지연(초)
 ADVISOR_API_DELAY = float(os.environ.get("ADVISOR_API_DELAY", "0.12"))

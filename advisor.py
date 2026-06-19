@@ -30,7 +30,7 @@ from advisor_config import (
     DT_STOP_PCT, DT_RR, DT_MIN_SCORE,
     SW_STOP_PCT, SW_RR, SW_MIN_SCORE,
     ADVISOR_LOOP_SEC, ADVISOR_API_DELAY,
-    ADVISOR_POLL_SEC, ADVISOR_INTERACTIVE,
+    ADVISOR_POLL_SEC, ADVISOR_INTERACTIVE, ADVISOR_MOMENTUM_TOPN,
 )
 
 KST = pytz.timezone("Asia/Seoul")
@@ -254,8 +254,51 @@ HELP_TEXT = (
     "🇰🇷 국내: <code>삼성전자</code> · <code>에코프로</code> · <code>000660</code>\n"
     "🇺🇸 미국: <code>엔비디아</code> · <code>NVDA</code> · <code>TSLA</code>\n"
     "단타만: <code>삼성전자 단타</code> / 스윙만: <code>NVDA 스윙</code>\n"
+    "⭐ <code>모멘텀</code> — 백테스트로 검증된 모멘텀 상위 랭킹(월 1회 교체)\n"
     "정시 리포트: <code>리포트</code> · 도움말: <code>도움말</code>"
 )
+
+
+def _momentum_report(topn: int = ADVISOR_MOMENTUM_TOPN) -> str:
+    """크로스섹셔널 모멘텀 상위 랭킹 — 백테스트로 검증된 전략.
+
+    strategy_clenow_kr(120일 Clenow 모멘텀, KOSPI>MA200 게이트) 재사용.
+    """
+    try:
+        import strategy_clenow_kr as clenow
+    except Exception as e:
+        return f"⚠️ 모멘텀 모듈 로드 오류: {e}"
+
+    regime = clenow.check_kospi_regime()
+    if regime.get("regime") != "BULL":
+        return (
+            "📊 <b>모멘텀 랭킹 (KR)</b>\n"
+            f"KOSPI 체제: <b>{regime.get('regime','?')}</b> (200일선 하회)\n\n"
+            "⚠️ 모멘텀은 약세장에서 급격히 깨집니다(momentum crash).\n"
+            "→ 신규 진입 보류 / 현금 비중 확대 권장. KOSPI가 MA200 회복하면 재개."
+        )
+
+    cands = clenow.scan_clenow_candidates(max_positions=topn, top_pct=0.20)
+    if not cands:
+        return "📊 모멘텀 랭킹 — 조건 충족 종목 없음 (데이터/체제 확인 필요)"
+
+    lines = [
+        f"📊 <b>모멘텀 랭킹 (KR · {now_kst().strftime('%m/%d')})</b>",
+        f"KOSPI 체제: BULL · 상위 {len(cands)}종목",
+        "",
+    ]
+    for i, c in enumerate(cands, 1):
+        lines.append(f"{i:>2}. <b>{c['name']}</b>({c['ticker']}) "
+                     f"{int(c['close']):,} · 점수 {c['score']:.0f}")
+    lines.append(
+        "\n💡 <b>운용법</b>: 상위 10~15종목 균등 보유, <b>월 1회 재랭킹</b>해서 "
+        "상위권 유지·하위 이탈/MA50 깨진 종목만 교체. 보유 수주~수개월."
+    )
+    lines.append(
+        "\n※ 백테스트: 동일가중 전체 대비 꾸준한 초과수익(8개 설정 전부). "
+        "단 생존편향·우호장 영향으로 절대수익은 과신 금물, 약세장 손실 큼."
+    )
+    return "\n".join(lines)
 
 
 # KIS 종목상태(iscd_stat_cls_code) 중 '주의가 필요한' 코드만 경고.
@@ -364,6 +407,9 @@ def handle_query(text: str) -> str:
     if low in ("리포트", "report", "/report"):
         # 즉석 전체 리포트 요청
         return None  # 신호: 호출부에서 generate_and_send() 실행
+    if low in ("모멘텀", "momentum", "랭킹", "모멘텀랭킹", "/모멘텀"):
+        telegram.send_force("⏳ 모멘텀 랭킹 스캔 중… (350종목, 1~2분 소요)")
+        return _momentum_report()
 
     # 스타일 키워드 파싱
     styles = set()
