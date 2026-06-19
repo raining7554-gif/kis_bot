@@ -58,5 +58,9 @@ SW_MIN_SCORE  = int(os.environ.get("SW_MIN_SCORE", "55"))
 # 루프 인터벌
 # ─────────────────────────────────────────────────────────
 ADVISOR_LOOP_SEC = int(os.environ.get("ADVISOR_LOOP_SEC", "20"))
+# 대화형 질의응답 폴링 주기(초) — 텔레그램으로 종목명 물어보면 답하는 모드
+ADVISOR_POLL_SEC = int(os.environ.get("ADVISOR_POLL_SEC", "3"))
+# 대화형 질의응답 on/off (끄면 정시 리포트만)
+ADVISOR_INTERACTIVE = os.environ.get("ADVISOR_INTERACTIVE", "true").lower() == "true"
 # 자동발굴 스캔이 KIS rate-limit 에 걸리지 않도록 호출 간 지연(초)
 ADVISOR_API_DELAY = float(os.environ.get("ADVISOR_API_DELAY", "0.12"))

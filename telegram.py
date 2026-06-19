@@ -104,6 +104,25 @@ def send_error(msg: str):
     send(f"⚠️ <b>오류 발생</b>\n{msg}", dedup_sec=_ERROR_DEDUP_SEC)
 
 
+def get_updates(offset: int = None, timeout: int = 0) -> list:
+    """텔레그램 수신 메시지 폴링 (대화형 봇용).
+
+    리턴: update dict 리스트. offset 으로 이미 처리한 메시지는 건너뜀.
+    """
+    if not TELEGRAM_TOKEN:
+        return []
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+        params = {"timeout": timeout}
+        if offset is not None:
+            params["offset"] = offset
+        resp = requests.get(url, params=params, timeout=timeout + 10)
+        return resp.json().get("result", [])
+    except Exception as e:
+        print(f"[TELEGRAM] getUpdates 오류: {e}")
+        return []
+
+
 def send_daily_summary(total_pnl: float, trade_count: int):
     emoji = "✅" if total_pnl >= 0 else "❌"
     send_force(
