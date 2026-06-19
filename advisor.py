@@ -143,6 +143,21 @@ def run_daytrade(tickers: list[tuple]) -> list[dict]:
 # 리포트 포매팅
 # ═══════════════════════════════════════════════════════
 _SIGNAL_EMOJI = {"매수후보": "🟢", "관망": "🟡", "회피": "🔴"}
+# 표시용 라벨 — 점수는 수익 '예측'이 아니라 '추세·진입조건 충족도'라서
+# '매수후보' 같은 단정적 표현 대신 추세 상태로 표기한다.
+_SIGNAL_LABEL = {"매수후보": "추세양호", "관망": "관망", "회피": "추세약함"}
+
+
+def _label(signal: str) -> str:
+    return _SIGNAL_LABEL.get(signal, signal)
+
+
+# 점수는 '수익 예측'이 아니라 '추세·진입조건 충족도'다. (광범위 백테스트에서
+# 점수 자체의 초과수익 예측력은 확인되지 않음 → 종목 선택은 본인, 봇은 규율 도구)
+_DISCLAIMER = (
+    "\n※ 점수=추세·진입조건 충족도(수익 예측 아님). 종목 선택은 본인 판단,\n"
+    "  봇은 진입가·손절·추세상태 정리용. 손절 지키고 분할매수 권장."
+)
 
 
 def _px(v, market: str = "KR") -> str:
@@ -169,7 +184,7 @@ def _levels(r: dict) -> str:
 def _fmt_rec(r: dict, min_score: int) -> str:
     em = _SIGNAL_EMOJI.get(r["signal"], "⚪")
     m = r.get("market", "KR")
-    head = f"{em} <b>{r['name']}</b>({r['ticker']}) · {r['signal']} ({r['score']}점)"
+    head = f"{em} <b>{r['name']}</b>({r['ticker']}) · {_label(r['signal'])} ({r['score']}점)"
     body = f"\n  현재가 {_px(r['price'], m)}\n{_levels(r)}\n  ↳ {r['comment']}"
     return head + body
 
@@ -202,7 +217,7 @@ def build_report(swing: list[dict], day: list[dict], market_open: bool) -> str:
     else:
         lines.append("  · 분석 가능한 종목 없음 (KOSPI 약세 시 스윙 보류)")
 
-    lines.append("\n※ 추천이며 보장 아님. 진입가·손절 지키고 분할매수 권장.")
+    lines.append(_DISCLAIMER)
     return "\n".join(lines)
 
 
@@ -288,7 +303,7 @@ def _single_report(code: str, name: str, styles: set) -> str:
         else:
             lines.append("\n📈 <b>스윙</b> — 일봉 데이터 부족으로 분석 불가")
 
-    lines.append("\n※ 추천이며 보장 아님. 손절 지키고 분할매수 권장.")
+    lines.append(_DISCLAIMER)
     return head + "\n".join(lines)
 
 
@@ -297,7 +312,7 @@ def _style_block(rec: dict) -> str:
     em = _SIGNAL_EMOJI.get(rec["signal"], "⚪")
     icon = "⚡ <b>단타</b>" if rec["style"] == "단타" else "📈 <b>스윙</b>"
     return (
-        f"\n{icon} {em} {rec['signal']} ({rec['score']}점)\n"
+        f"\n{icon} {em} {_label(rec['signal'])} ({rec['score']}점)\n"
         f"{_levels(rec)}\n  ↳ {rec['comment']}"
     )
 
@@ -332,11 +347,10 @@ def _single_report_us(ticker: str, styles: set) -> str:
                                     rr=SW_RR, market="US", min_buy_score=SW_MIN_SCORE)
         if sw:
             lines.append(_style_block(sw))
-            lines.append("  · ⚠️ 미국 스윙 점수는 백테스트 미검증 — 참고용")
         else:
             lines.append("\n📈 <b>스윙</b> — 일봉 데이터 부족으로 분석 불가")
 
-    lines.append("\n※ 추천이며 보장 아님. 손절 지키고 분할매수 권장.")
+    lines.append(_DISCLAIMER)
     return "\n".join(lines)
 
 

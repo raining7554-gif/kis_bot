@@ -176,7 +176,7 @@ def analyze_swing(ticker: str, name: str, candles: list,
         comment = (f"정배열 양호하나 지지선 위로 이격 — "
                    f"MA20({_cf(ma20)})까지 눌림 시 분할매수")
     elif score < min_buy_score:
-        # 백테스트: 점수 65 미만 매수후보는 기대수익 (-) → 관망으로 강등
+        # 추세·진입조건 충족도가 낮으면(점수 미달) 관망으로 표기
         signal = "관망"
         comment = (f"조건 일부만 충족({score}점<{min_buy_score}) — "
                    f"RSI {rsi:.0f} / 거래량 {vol_ratio:.1f}배, 더 강해지면 진입")
