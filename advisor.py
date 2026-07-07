@@ -449,7 +449,7 @@ def handle_query(text: str) -> str:
 
 def poll_telegram(offset: int | None) -> int | None:
     """수신 메시지 처리. 새 offset 반환."""
-    updates = telegram.get_updates(offset=offset, timeout=0)
+    updates = telegram.get_updates(offset=offset, timeout=25)  # 롱폴링(최대 25s 대기)
     if updates:
         print(f"[ADVISOR] 업데이트 {len(updates)}건 수신")
     for u in updates:

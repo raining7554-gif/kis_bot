@@ -124,7 +124,8 @@ def get_updates(offset: int = None, timeout: int = 0) -> list:
         params = {"timeout": timeout}
         if offset is not None:
             params["offset"] = offset
-        resp = requests.get(url, params=params, timeout=timeout + 10)
+        # (연결 5s, 읽기 timeout+15s) — 롱폴링은 서버가 timeout 초까지 붙잡음
+        resp = requests.get(url, params=params, timeout=(5, timeout + 15))
         return resp.json().get("result", [])
     except Exception as e:
         print(f"[TELEGRAM] getUpdates 오류: {e}")
