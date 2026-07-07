@@ -21,7 +21,7 @@ def get_access_token() -> str:
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
     }
-    resp = requests.post(url, json=body)
+    resp = requests.post(url, json=body, timeout=10)
     resp.raise_for_status()
     data = resp.json()
 
@@ -44,13 +44,13 @@ def get_headers(tr_id: str) -> dict:
 def get(path: str, tr_id: str, params: dict) -> dict:
     """GET 요청"""
     url = f"{BASE_URL}{path}"
-    resp = requests.get(url, headers=get_headers(tr_id), params=params)
+    resp = requests.get(url, headers=get_headers(tr_id), params=params, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
 def post(path: str, tr_id: str, body: dict) -> dict:
     """POST 요청"""
     url = f"{BASE_URL}{path}"
-    resp = requests.post(url, headers=get_headers(tr_id), json=body)
+    resp = requests.post(url, headers=get_headers(tr_id), json=body, timeout=10)
     resp.raise_for_status()
     return resp.json()

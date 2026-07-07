@@ -362,7 +362,10 @@ def _style_block(rec: dict) -> str:
 
 def _single_report_us(ticker: str, styles: set) -> str:
     """미국주식 단일 종목 분석 (달러)."""
+    print(f"[ADVISOR] US 분석 시작: {ticker} 시세 조회…")
     quote = data.get_us_quote(ticker)
+    print(f"[ADVISOR] US {ticker} 시세: "
+          f"{('있음 '+quote.get('exchange','?')) if quote else '없음'}")
     if not quote or quote.get("price", 0) <= 0:
         return (f"⚠️ {ticker} 미국주식 시세를 못 가져왔어요.\n"
                 "티커 철자를 확인하거나(예: NVDA, TSLA), 잠시 후 다시 시도해 주세요.\n"
