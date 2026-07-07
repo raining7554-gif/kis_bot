@@ -447,16 +447,20 @@ def handle_query(text: str) -> str:
 def poll_telegram(offset: int | None) -> int | None:
     """수신 메시지 처리. 새 offset 반환."""
     updates = telegram.get_updates(offset=offset, timeout=0)
+    if updates:
+        print(f"[ADVISOR] 업데이트 {len(updates)}건 수신")
     for u in updates:
         offset = u["update_id"] + 1
         msg = u.get("message") or u.get("edited_message")
         if not msg:
             continue
         chat_id = str(msg.get("chat", {}).get("id", ""))
+        text = msg.get("text", "")
+        print(f"[ADVISOR] 메시지: chat={chat_id} text={text!r}")
         # 본인(설정된 chat) 메시지만 응답
         if TELEGRAM_CHAT_ID and chat_id != str(TELEGRAM_CHAT_ID):
+            print(f"[ADVISOR] chat_id 불일치 → 무시 (설정값={TELEGRAM_CHAT_ID!r})")
             continue
-        text = msg.get("text", "")
         if not text:
             continue
         try:
@@ -481,6 +485,10 @@ def main():
     print(f"리포트 시각: {ADVISOR_REPORT_TIMES}")
     print(f"자동발굴: {ADVISOR_AUTO_DISCOVER} "
           f"(단타 {ADVISOR_DAYTRADE_TOPN} / 스윙 {ADVISOR_SWING_TOPN})")
+    print(f"대화형: {ADVISOR_INTERACTIVE} | 폴링주기 {ADVISOR_POLL_SEC}s | "
+          f"CHAT_ID={TELEGRAM_CHAT_ID!r}")
+    if not TELEGRAM_CHAT_ID:
+        print("[ADVISOR] ⚠️ TELEGRAM_CHAT_ID 미설정 — 아무 메시지에나 응답합니다")
     print("=" * 55)
 
     try:
