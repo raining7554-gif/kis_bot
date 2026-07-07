@@ -9,6 +9,14 @@ import hashlib
 import requests
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
+# 일부 호스팅(Railway 등 컨테이너)에서 IPv6 경로가 없어 api.telegram.org 연결이
+# '[Errno 101] Network is unreachable' 로 실패하는 문제 방지 → IPv4 강제.
+try:
+    import urllib3.util.connection as _u3conn
+    _u3conn.HAS_IPV6 = False
+except Exception:
+    pass
+
 # 메시지 시그니처 → 마지막 전송 epoch 초
 _recent_sent: dict[str, float] = {}
 
