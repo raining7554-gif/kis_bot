@@ -16,6 +16,17 @@ def _resolve_mode() -> str:
 
 if __name__ == "__main__":
     mode = _resolve_mode()
+    if mode in ("off", "stop", "idle", "none", "pause", "정지"):
+        # 안전 정지 — 매매/조회 아무것도 안 하고 즉시 종료.
+        # (restartPolicyType=ON_FAILURE 이므로 정상 종료 시 재시작 안 됨)
+        print(f"[RUN] BOT_MODE={mode} → 정지 모드. 봇이 아무 것도 하지 않습니다.")
+        try:
+            import telegram
+            telegram.send_force("⏸️ <b>봇 정지됨</b> (BOT_MODE=off)\n"
+                                "매매/조회 중단. 재개하려면 BOT_MODE를 되돌리세요.")
+        except Exception:
+            pass
+        return
     if mode in ("liquidate", "청산", "sell_all", "selloff"):
         print(f"[RUN] BOT_MODE={mode} → 전량 청산 모드 실행")
         import liquidate
