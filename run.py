@@ -16,7 +16,11 @@ def _resolve_mode() -> str:
 
 if __name__ == "__main__":
     mode = _resolve_mode()
-    if mode in ("advisor", "adviser", "advice", "어드바이저"):
+    if mode in ("liquidate", "청산", "sell_all", "selloff"):
+        print(f"[RUN] BOT_MODE={mode} → 전량 청산 모드 실행")
+        import liquidate
+        liquidate.main()
+    elif mode in ("advisor", "adviser", "advice", "어드바이저"):
         print(f"[RUN] BOT_MODE={mode} → 어드바이저 봇 실행")
         import advisor
         advisor.main()
